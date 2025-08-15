@@ -1,9 +1,9 @@
 /**
  * Dashboard Store for WooCommerce Analytics
  */
+import { reportsAPI } from '@/services/api'
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { reportsAPI, productsAPI } from '@/services/api'
+import { computed, ref } from 'vue'
 
 export const useDashboardStore = defineStore('dashboard', () => {
   // State
@@ -42,11 +42,21 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   const fetchOrderStats = async () => {
-    // Implementation for order statistics
+    try {
+      const stats = await ordersAPI.getOrderStatistics()
+      orderStats.value = stats
+    } catch (error) {
+      console.error('Order stats fetch error:', error)
+    }
   }
 
   const fetchCustomerStats = async () => {
-    // Implementation for customer statistics
+    try {
+      const stats = await reportsAPI.getDashboardAnalytics()
+      customerStats.value = stats
+    } catch (error) {
+      console.error('Customer stats fetch error:', error)
+    }
   }
 
   return {

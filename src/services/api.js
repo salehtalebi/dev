@@ -5,9 +5,10 @@
 import axios from 'axios'
 
 // Base configuration for WordPress API
-const API_BASE_URL = 'https://academy.com'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:2145/nuvior'
 const WP_API_BASE = `${API_BASE_URL}/wp-json/wp/v2`
 const WC_API_BASE = `${API_BASE_URL}/wp-json/wc/v3`
+const CUSTOM_API_BASE = `${API_BASE_URL}/wp-json/sales-dashboard/v1`
 
 // Create axios instance
 const apiClient = axios.create({
@@ -87,6 +88,18 @@ export const ordersAPI = {
   updateOrderStatus: async (orderId, status) => {
     const response = await apiClient.put(`${WC_API_BASE}/orders/${orderId}`, { status })
     return response.data
+  },
+
+  // Get orders by account manager (custom endpoint)
+  getOrdersByAccountManager: async (managerId, params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/orders/by-manager/${managerId}`, { params })
+    return response.data
+  },
+
+  // Get order statistics
+  getOrderStatistics: async (params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/orders/statistics`, { params })
+    return response.data
   }
 }
 
@@ -113,6 +126,18 @@ export const customersAPI = {
     const response = await apiClient.get(`${WC_API_BASE}/orders`, { 
       params: { customer: customerId, ...params } 
     })
+    return response.data
+  },
+
+  // Get customers by account manager
+  getCustomersByAccountManager: async (managerId, params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/customers/by-manager/${managerId}`, { params })
+    return response.data
+  },
+
+  // Get customer statistics
+  getCustomerStatistics: async (customerId, params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/customers/${customerId}/statistics`, { params })
     return response.data
   }
 }
@@ -146,6 +171,69 @@ export const reportsAPI = {
   getTopSellers: async (period = 'week') => {
     const response = await apiClient.get(`${WC_API_BASE}/reports/top_sellers`, {
       params: { period }
+    })
+    return response.data
+  },
+
+  // Custom dashboard analytics
+  getDashboardAnalytics: async (params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/dashboard`, { params })
+    return response.data
+  },
+
+  // Monthly comparison report
+  getMonthlyComparison: async () => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/monthly-comparison`)
+    return response.data
+  },
+
+  // Account manager performance
+  getAccountManagerPerformance: async (managerId, params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/manager/${managerId}`, { params })
+    return response.data
+  }
+}
+
+// Account Managers API (Custom)
+export const accountManagersAPI = {
+  // Get all account managers
+  getAccountManagers: async () => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/account-managers`)
+    return response.data
+  },
+
+  // Get account manager details
+  getAccountManager: async (managerId) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/account-managers/${managerId}`)
+    return response.data
+  },
+
+  // Assign customer to account manager
+  assignCustomer: async (customerId, managerId) => {
+    const response = await apiClient.post(`${CUSTOM_API_BASE}/account-managers/assign`, {
+      customer_id: customerId,
+      manager_id: managerId
+    })
+    return response.data
+  }
+}
+
+// Export API
+export const exportAPI = {
+  // Export orders
+  exportOrders: async (params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/export/orders`, {
+      params,
+      responseType: 'blob'
+    })
+    return response.data
+  },
+
+  // Export customers
+  exportCustomers: async (params = {}) => {
+    const response = await apiClient.get(`${CUSTOM_API_BASE}/export/customers`, {
+      params,
+      responseType: 'blob'
     })
     return response.data
   }

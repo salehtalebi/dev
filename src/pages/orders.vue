@@ -204,10 +204,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useOrdersStore } from '@/stores/orders'
 import { format } from 'date-fns'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const ordersStore = useOrdersStore()

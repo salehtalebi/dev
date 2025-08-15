@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Dashboard API Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            direction: rtl;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .toc {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .toc h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .toc ul {
+            list-style: none;
+        }
+        
+        .toc li {
+            margin: 8px 0;
+        }
+        
+        .toc a {
+            color: #333;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .toc a:hover {
+            background-color: #f0f2ff;
+            color: #667eea;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .api-endpoint {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .api-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .api-method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+            color: white;
+            font-size: 0.9rem;
+        }
+        
+        .get { background-color: #28a745; }
+        .post { background-color: #007bff; }
+        .put { background-color: #ffc107; color: #333; }
+        .delete { background-color: #dc3545; }
+        
+        .api-url {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .api-body {
+            padding: 20px;
+        }
+        
+        .api-description {
+            margin-bottom: 15px;
+            color: #6c757d;
+        }
+        
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        .params-table th,
+        .params-table td {
+            border: 1px solid #e9ecef;
+            padding: 10px;
+            text-align: right;
+        }
+        
+        .params-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        
+        .required {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .optional {
+            color: #28a745;
+        }
+        
+        .code-block {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+        
+        .response-example {
+            background-color: #e8f5e8;
+            border-left: 4px solid #28a745;
+        }
+        
+        .request-example {
+            background-color: #e3f2fd;
+            border-left: 4px solid #007bff;
+        }
+        
+        .auth-note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .auth-note strong {
+            color: #856404;
+        }
+        
+        .status-codes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .status-code {
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .status-200 { background-color: #d4edda; color: #155724; }
+        .status-400 { background-color: #f8d7da; color: #721c24; }
+        .status-401 { background-color: #f8d7da; color: #721c24; }
+        .status-403 { background-color: #f8d7da; color: #721c24; }
+        .status-404 { background-color: #f8d7da; color: #721c24; }
+        .status-500 { background-color: #f8d7da; color: #721c24; }
+        
+        .implementation-note {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .implementation-note strong {
+            color: #0c5460;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .params-table {
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🏪 Sales Dashboard API</h1>
+            <p>مستندات کامل API های سیستم مدیریت فروش</p>
+            <p><strong>Base URL:</strong> https://academy.com</p>
+        </div>
+
+        <!-- Table of Contents -->
+        <div class="toc">
+            <h2>📋 فهرست مطالب</h2>
+            <ul>
+                <li><a href="#authentication">🔐 Authentication (تایید هویت)</a></li>
+                <li><a href="#woocommerce-orders">📦 WooCommerce Orders API</a></li>
+                <li><a href="#woocommerce-customers">👥 WooCommerce Customers API</a></li>
+                <li><a href="#woocommerce-reports">📊 WooCommerce Reports API</a></li>
+                <li><a href="#custom-analytics">📈 Custom Analytics API</a></li>
+                <li><a href="#account-managers">👨‍💼 Account Managers API</a></li>
+                <li><a href="#export">📤 Export API</a></li>
+                <li><a href="#frontend-usage">🖥️ Frontend Usage Examples</a></li>
+            </ul>
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="section" id="authentication">
+            <h2>🔐 Authentication (تایید هویت)</h2>
+            
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method post">POST</span>
+                    <span class="api-url">/wp-json/jwt-auth/v1/token</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت JWT Token برای احراز هویت</div>
+                    
+                    <h4>Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>username</td>
+                            <td>string</td>
+                            <td class="required">بله</td>
+                            <td>نام کاربری یا ایمیل</td>
+                        </tr>
+                        <tr>
+                            <td>password</td>
+                            <td>string</td>
+                            <td class="required">بله</td>
+                            <td>رمز عبور</td>
+                        </tr>
+                    </table>
+
+                    <h4>Request Example:</h4>
+                    <div class="code-block request-example">
+{
+  "username": "admin@academy.com",
+  "password": "your_password"
+}
+                    </div>
+
+                    <h4>Response Example:</h4>
+                    <div class="code-block response-example">
+{
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "user_email": "admin@academy.com",
+  "user_nicename": "admin",
+  "user_display_name": "مدیر سیستم",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@academy.com",
+    "first_name": "مدیر",
+    "last_name": "سیستم",
+    "roles": ["administrator"],
+    "is_account_manager": true
+  }
+}
+                    </div>
+
+                    <div class="auth-note">
+                        <strong>نکته:</strong> فقط کاربران با نقش Administrator یا Shop Manager می‌توانند توکن دریافت کنند.
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method post">POST</span>
+                    <span class="api-url">/wp-json/jwt-auth/v1/token/validate</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">تایید اعتبار JWT Token</div>
+                    
+                    <h4>Headers:</h4>
+                    <div class="code-block">
+Authorization: Bearer YOUR_JWT_TOKEN
+                    </div>
+
+                    <h4>Response (Valid Token):</h4>
+                    <div class="code-block response-example">
+{
+  "code": "jwt_auth_valid_token",
+  "data": {
+    "status": 200
+  }
+}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WooCommerce Orders Section -->
+        <div class="section" id="woocommerce-orders">
+            <h2>📦 WooCommerce Orders API</h2>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/orders</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت لیست سفارشات</div>
+                    
+                    <h4>Query Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>شماره صفحه (پیش‌فرض: 1)</td>
+                        </tr>
+                        <tr>
+                            <td>per_page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>تعداد آیتم در صفحه (حداکثر: 100)</td>
+                        </tr>
+                        <tr>
+                            <td>status</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>وضعیت سفارش (pending, processing, completed, etc.)</td>
+                        </tr>
+                        <tr>
+                            <td>customer</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>ID مشتری</td>
+                        </tr>
+                        <tr>
+                            <td>after</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>سفارشات بعد از تاریخ (ISO8601)</td>
+                        </tr>
+                        <tr>
+                            <td>before</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>سفارشات قبل از تاریخ (ISO8601)</td>
+                        </tr>
+                    </table>
+
+                    <h4>Headers:</h4>
+                    <div class="code-block">
+Authorization: Bearer YOUR_JWT_TOKEN
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/stores/orders.js
+const response = await ordersAPI.getOrders({
+  page: 1,
+  per_page: 20,
+  status: 'completed'
+})
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/orders/{id}</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت جزئیات یک سفارش</div>
+                    
+                    <h4>Path Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>id</td>
+                            <td>integer</td>
+                            <td class="required">بله</td>
+                            <td>شناسه سفارش</td>
+                        </tr>
+                    </table>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/order-detail.vue
+const order = await ordersStore.fetchOrder(orderId)
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method put">PUT</span>
+                    <span class="api-url">/wp-json/wc/v3/orders/{id}</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">بروزرسانی وضعیت سفارش</div>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="code-block request-example">
+{
+  "status": "completed"
+}
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/order-detail.vue
+await ordersStore.updateOrderStatus(orderId, 'completed')
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WooCommerce Customers Section -->
+        <div class="section" id="woocommerce-customers">
+            <h2>👥 WooCommerce Customers API</h2>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/customers</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت لیست مشتریان</div>
+                    
+                    <h4>Query Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>شماره صفحه</td>
+                        </tr>
+                        <tr>
+                            <td>per_page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>تعداد آیتم در صفحه</td>
+                        </tr>
+                        <tr>
+                            <td>search</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>جستجو در نام، ایمیل</td>
+                        </tr>
+                        <tr>
+                            <td>role</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>نقش کاربر</td>
+                        </tr>
+                    </table>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/customers.vue
+const customers = await customersStore.fetchCustomers({
+  page: 1,
+  per_page: 20,
+  search: 'احمد'
+})
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/customers/{id}</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت جزئیات یک مشتری</div>
+                    
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/customer-detail.vue
+const customer = await customersStore.fetchCustomer(customerId)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WooCommerce Reports Section -->
+        <div class="section" id="woocommerce-reports">
+            <h2>📊 WooCommerce Reports API</h2>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/reports/sales</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">گزارش فروش</div>
+                    
+                    <h4>Query Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>period</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>دوره زمانی (week, month, year)</td>
+                        </tr>
+                        <tr>
+                            <td>date_min</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>تاریخ شروع (YYYY-MM-DD)</td>
+                        </tr>
+                        <tr>
+                            <td>date_max</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>تاریخ پایان (YYYY-MM-DD)</td>
+                        </tr>
+                    </table>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/stores/dashboard.js
+const salesReport = await reportsAPI.getSalesReport('month')
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/wc/v3/reports/top_sellers</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">پرفروش‌ترین محصولات</div>
+                    
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/dashboard.vue
+const topProducts = await reportsAPI.getTopSellers('month')
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Analytics Section -->
+        <div class="section" id="custom-analytics">
+            <h2>📈 Custom Analytics API</h2>
+            
+            <div class="implementation-note">
+                <strong>توجه:</strong> این API ها در پلاگین سفارشی Sales Dashboard پیاده‌سازی شده‌اند.
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/analytics/dashboard</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">آمار کلی داشبورد</div>
+                    
+                    <h4>Response Example:</h4>
+                    <div class="code-block response-example">
+{
+  "current_month": {
+    "orders": 125,
+    "revenue": 45000.50
+  },
+  "last_month": {
+    "orders": 110,
+    "revenue": 38000.00
+  },
+  "growth": {
+    "orders": 13.64,
+    "revenue": 18.42
+  }
+}
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/stores/dashboard.js
+const analytics = await reportsAPI.getDashboardAnalytics()
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/analytics/monthly-comparison</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">مقایسه 12 ماه گذشته</div>
+                    
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/dashboard.vue
+const monthlyData = await reportsAPI.getMonthlyComparison()
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/customers/{id}/statistics</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">آمار تفصیلی مشتری</div>
+                    
+                    <h4>Response Example:</h4>
+                    <div class="code-block response-example">
+{
+  "total_orders": 15,
+  "total_spent": 5250.00,
+  "current_month_total": 850.00,
+  "last_month_total": 720.00,
+  "growth_percentage": 18.06,
+  "average_order_value": 350.00,
+  "monthly_data": [...]
+}
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/customer-detail.vue
+const stats = await customersStore.fetchCustomerStatistics(customerId)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Managers Section -->
+        <div class="section" id="account-managers">
+            <h2>👨‍💼 Account Managers API</h2>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/account-managers</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">دریافت لیست Account Manager ها</div>
+                    
+                    <h4>Response Example:</h4>
+                    <div class="code-block response-example">
+[
+  {
+    "id": 5,
+    "name": "احمد محمدی",
+    "email": "ahmad@academy.com"
+  },
+  {
+    "id": 7,
+    "name": "سارا احمدی", 
+    "email": "sara@academy.com"
+  }
+]
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فیلترهای صفحات orders و customers
+const managers = await accountManagersAPI.getAccountManagers()
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/orders/by-manager/{id}</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">سفارشات بر اساس Account Manager</div>
+                    
+                    <h4>Query Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>شماره صفحه</td>
+                        </tr>
+                        <tr>
+                            <td>per_page</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>تعداد آیتم در صفحه</td>
+                        </tr>
+                    </table>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فیلترهای صفحه orders
+const orders = await ordersAPI.getOrdersByAccountManager(managerId, {
+  page: 1,
+  per_page: 20
+})
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/customers/by-manager/{id}</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">مشتریان بر اساس Account Manager</div>
+                    
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فیلترهای صفحه customers
+const customers = await customersAPI.getCustomersByAccountManager(managerId)
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method post">POST</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/account-managers/assign</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">تخصیص مشتری به Account Manager</div>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="code-block request-example">
+{
+  "customer_id": 123,
+  "manager_id": 5
+}
+                    </div>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در صفحه مدیریت مشتریان
+await accountManagersAPI.assignCustomer(customerId, managerId)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="section" id="export">
+            <h2>📤 Export API</h2>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/export/orders</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">خروجی Excel/CSV سفارشات</div>
+                    
+                    <h4>Query Parameters:</h4>
+                    <table class="params-table">
+                        <tr>
+                            <th>پارامتر</th>
+                            <th>نوع</th>
+                            <th>ضروری</th>
+                            <th>توضیحات</th>
+                        </tr>
+                        <tr>
+                            <td>format</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>فرمت خروجی (csv, excel)</td>
+                        </tr>
+                        <tr>
+                            <td>status</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>فیلتر وضعیت</td>
+                        </tr>
+                        <tr>
+                            <td>date_from</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>از تاریخ</td>
+                        </tr>
+                        <tr>
+                            <td>date_to</td>
+                            <td>string</td>
+                            <td class="optional">خیر</td>
+                            <td>تا تاریخ</td>
+                        </tr>
+                        <tr>
+                            <td>manager_id</td>
+                            <td>integer</td>
+                            <td class="optional">خیر</td>
+                            <td>Account Manager ID</td>
+                        </tr>
+                    </table>
+
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/orders.vue
+const exportOrders = async () => {
+  const blob = await exportAPI.exportOrders({
+    format: 'excel',
+    status: 'completed',
+    date_from: '2024-01-01',
+    date_to: '2024-12-31'
+  })
+  
+  // دانلود فایل
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'orders-export.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-endpoint">
+                <div class="api-header">
+                    <span class="api-method get">GET</span>
+                    <span class="api-url">/wp-json/sales-dashboard/v1/export/customers</span>
+                </div>
+                <div class="api-body">
+                    <div class="api-description">خروجی Excel/CSV مشتریان</div>
+                    
+                    <h4>Frontend Implementation:</h4>
+                    <div class="code-block">
+// در فایل src/pages/customers.vue
+const exportCustomers = async () => {
+  const blob = await exportAPI.exportCustomers({
+    format: 'excel',
+    manager_id: selectedManagerId
+  })
+  // ... دانلود مشابه بالا
+}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Frontend Usage Section -->
+        <div class="section" id="frontend-usage">
+            <h2>🖥️ Frontend Usage Examples</h2>
+
+            <h3>🔗 API Service Configuration</h3>
+            <div class="code-block">
+// فایل src/services/api.js
+import axios from 'axios'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://academy.com'
+const WC_API_BASE = `${API_BASE_URL}/wp-json/wc/v3`
+const CUSTOM_API_BASE = `${API_BASE_URL}/wp-json/sales-dashboard/v1`
+
+const apiClient = axios.create({
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+})
+
+// Add JWT token to requests
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('wp_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  }
+)
+            </div>
+
+            <h3>🔐 Authentication Store Usage</h3>
+            <div class="code-block">
+// فایل src/pages/login.vue
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+
+const handleLogin = async () => {
+  const result = await authStore.login({
+    username: form.value.email,
+    password: form.value.password
+  })
+  
+  if (result.success && authStore.isAdmin) {
+    router.push('/dashboard')
+  }
+}
+            </div>
+
+            <h3>📦 Orders Management</h3>
+            <div class="code-block">
+// فایل src/stores/orders.js
+import { ordersAPI } from '@/services/api'
+
+export const useOrdersStore = defineStore('orders', () => {
+  const orders = ref([])
+  const filters = ref({
+    status: '',
+    account_manager: '',
+    date_from: '',
+    date_to: ''
+  })
+
+  const fetchOrders = async () => {
+    const response = await ordersAPI.getOrders({
+      page: currentPage.value,
+      per_page: 20,
+      ...filters.value
+    })
+    orders.value = response.data
+  }
+  
+  return { orders, filters, fetchOrders }
+})
+            </div>
+
+            <h3>👥 Customers Management</h3>
+            <div class="code-block">
+// فایل src/pages/customers.vue
+import { useCustomersStore } from '@/stores/customers'
+
+const customersStore = useCustomersStore()
+
+// فیلتر بر اساس Account Manager
+const filterByManager = async (managerId) => {
+  customersStore.setFilters({ account_manager: managerId })
+  await customersStore.fetchCustomers()
+}
+
+// مشاهده جزئیات مشتری
+const viewCustomer = (customerId) => {
+  router.push(`/customers/${customerId}`)
+}
+            </div>
+
+            <h3>📊 Dashboard Analytics</h3>
+            <div class="code-block">
+// فایل src/pages/dashboard.vue
+import { useDashboardStore } from '@/stores/dashboard'
+
+const dashboardStore = useDashboardStore()
+
+onMounted(async () => {
+  await dashboardStore.fetchDashboardData()
+  
+  // Setup charts with real data
+  setupSalesChart(dashboardStore.salesData)
+  setupTopProductsChart(dashboardStore.topProducts)
+})
+            </div>
+
+            <h3>📤 Export Functionality</h3>
+            <div class="code-block">
+// Export with current filters
+const exportWithFilters = async () => {
+  try {
+    isExporting.value = true
+    
+    const blob = await exportAPI.exportOrders({
+      format: 'excel',
+      ...ordersStore.filters  // Apply current filters
+    })
+    
+    // Download file
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `orders-${new Date().toISOString().split('T')[0]}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    
+  } catch (error) {
+    console.error('Export error:', error)
+  } finally {
+    isExporting.value = false
+  }
+}
+            </div>
+        </div>
+
+        <!-- Status Codes Section -->
+        <div class="section">
+            <h2>📡 HTTP Status Codes</h2>
+            <div class="status-codes">
+                <div class="status-code status-200">200 - موفق</div>
+                <div class="status-code status-400">400 - خطای درخواست</div>
+                <div class="status-code status-401">401 - غیر مجاز</div>
+                <div class="status-code status-403">403 - دسترسی ممنوع</div>
+                <div class="status-code status-404">404 - یافت نشد</div>
+                <div class="status-code status-500">500 - خطای سرور</div>
+            </div>
+        </div>
+
+        <!-- Environment Variables -->
+        <div class="section">
+            <h2>⚙️ Environment Variables</h2>
+            <div class="code-block">
+# فایل .env
+VITE_API_BASE_URL=https://academy.com
+VITE_WP_API_ENDPOINT=/wp-json/wp/v2
+VITE_WC_API_ENDPOINT=/wp-json/wc/v3
+VITE_CUSTOM_API_ENDPOINT=/wp-json/sales-dashboard/v1
+VITE_JWT_ENDPOINT=/wp-json/jwt-auth/v1
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="section">
+            <h2>📞 پشتیبانی</h2>
+            <p>برای سوالات و مشکلات فنی:</p>
+            <ul>
+                <li>📧 Email: support@academy.com</li>
+                <li>📱 تلفن: +98 21 1234 5678</li>
+                <li>🌐 وب‌سایت: https://academy.com</li>
+            </ul>
+            
+            <div class="auth-note">
+                <strong>نکته مهم:</strong> تمام API ها نیاز به احراز هویت دارند. حتماً JWT Token را در Header درخواست‌ها ارسال کنید.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,9 +1,9 @@
 /**
  * Customers Store - Pinia
  */
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import { customersAPI } from '@/services/api'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
 
 export const useCustomersStore = defineStore('customers', () => {
   // State
