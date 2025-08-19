@@ -45,9 +45,6 @@ const isPasswordVisible = ref(false)
               class="d-flex"
               v-html="logo"
             />
-            <h1 class="app-logo-title">
-              sneat
-            </h1>
           </RouterLink>
         </VCardItem>
 

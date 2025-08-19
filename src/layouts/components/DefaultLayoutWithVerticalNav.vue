@@ -67,10 +67,6 @@ import UserProfile from '@/layouts/components/UserProfile.vue'
           v-html="logo"
         />
         <!-- eslint-enable -->
-
-        <h1 class="app-logo-title">
-          sneat
-        </h1>
       </RouterLink>
 
       <IconBtn

@@ -13,12 +13,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
     }"
   />
 
-  <!-- Sales Management -->
-  <VerticalNavSectionTitle
-    :item="{
-      heading: 'مدیریت فروش',
-    }"
-  />
+
   
   <VerticalNavLink
     :item="{
@@ -36,12 +31,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
     }"
   />
 
-  <!-- Original Menu Items -->
-  <VerticalNavSectionTitle
-    :item="{
-      heading: 'صفحات',
-    }"
-  />
+
 
   <VerticalNavLink
     :item="{
@@ -51,29 +41,29 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
     }"
   />
   
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
-      title: 'Typography',
+      title: 'Typogلاتraphy',
       icon: 'bx-message-dots',
       to: '/typography',
     }"
-  />
+  /> -->
   
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Icons',
       icon: 'bx-crown',
       to: '/icons',
     }"
-  />
+  /> -->
   
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Cards',
       icon: 'bx-collection',
       to: '/cards',
     }"
-  />
+  /> -->
   
   <VerticalNavLink
     :item="{

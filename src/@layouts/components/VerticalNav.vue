@@ -64,10 +64,6 @@ const handleNavScroll = evt => {
             class="d-flex"
             v-html="logo"
           />
-
-          <h1 class="leading-normal">
-            sneat
-          </h1>
         </RouterLink>
       </slot>
     </div>
