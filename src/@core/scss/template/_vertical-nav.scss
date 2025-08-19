@@ -61,7 +61,7 @@ $divider-gap: 0.75rem;
     }
 
     // Active status indicator
-    .nav-link .router-link-exact-active,
+  
     .nav-group.open .nav-group-label:has(+ .nav-group-children-wrapper > .nav-group-children > .nav-link > .router-link-exact-active) {
       &::after {
         position: absolute;

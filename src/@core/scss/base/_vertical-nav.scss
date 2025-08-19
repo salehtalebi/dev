@@ -6,6 +6,7 @@
 @use "vuetify/lib/styles/tools/states" as vuetifyStates;
 
 .layout-nav-type-vertical {
+
   // 👉 Layout Vertical nav
   .layout-vertical-nav {
     $sl-layout-nav-type-vertical: &;
@@ -13,6 +14,7 @@
     @extend %nav;
 
     @at-root {
+
       // ℹ️ Add styles for collapsed vertical nav
       .layout-vertical-nav-collapsed#{$sl-layout-nav-type-vertical}.hovered {
         @include mixins.elevation(6);
@@ -34,6 +36,7 @@
         transition: transform 0.25s ease-in-out;
 
         @at-root {
+
           // Move logo a bit to align center with the icons in vertical nav mini variant
           .layout-vertical-nav-collapsed#{$sl-layout-nav-type-vertical}:not(.hovered) .nav-header .app-logo {
             transform: translateX(variables.$vertical-nav-header-logo-translate-x-when-vertical-nav-mini);
@@ -58,13 +61,10 @@
     .vertical-nav-items-shadow {
       position: absolute;
       z-index: 1;
-      background:
-        linear-gradient(
-          rgb(#{variables.$vertical-nav-background-color-rgb}) 5%,
-          rgba(#{variables.$vertical-nav-background-color-rgb}, 75%) 45%,
-          rgba(#{variables.$vertical-nav-background-color-rgb}, 20%) 80%,
-          transparent
-        );
+      background: linear-gradient(rgb(#{variables.$vertical-nav-background-color-rgb}) 5%,
+        rgba(#{variables.$vertical-nav-background-color-rgb}, 75%) 45%,
+        rgba(#{variables.$vertical-nav-background-color-rgb}, 20%) 80%,
+        transparent);
       block-size: 55px;
       inline-size: 100%;
       inset-block-start: calc(#{variables.$vertical-nav-header-height} - 2px);
@@ -137,17 +137,35 @@
     // 👉 Vertical nav link
     .nav-link {
       @extend %nav-link;
+      border-radius: 12px;
 
-      > .router-link-exact-active {
-        @extend %nav-link-active;
+      >a {
+        margin: 4px 32px !important;
+        padding: 16px 20px !important;
+
+        >.nav-item-title {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 17px
+        }
       }
 
-      > a {
+      >.router-link-exact-active {
+        @extend %nav-link-active;
+        background-color: #0098CC;
+        color: #fff;
+
+
+         >.v-icon :where(path, circle, rect, polygon, line, polyline) {
+         
+            stroke: #fff;
+          }
+
+      }
+
+      >a {
         // Adds before psudo element to style hover state
         @include mixins.before-pseudo;
-
-        // Adds vuetify states
-
         &:not(.router-link-active, .router-link-exact-active) {
           @include vuetifyStates.states($active: false);
         }
@@ -156,6 +174,7 @@
 
     // 👉 Vertical nav group
     .nav-group {
+
       // Reduce the size of icon if link/group is inside group
       .nav-group,
       .nav-link {
@@ -166,6 +185,7 @@
 
       // Hide icons after 2nd level
       & .nav-group {
+
         .nav-link,
         .nav-group {
           .nav-item-icon {
@@ -183,7 +203,7 @@
 
       // Rotate arrow icon if group is opened
       &.open {
-        > .nav-group-label .nav-group-arrow {
+        >.nav-group-label .nav-group-arrow {
           transform: rotateZ(90deg);
         }
       }
@@ -194,7 +214,7 @@
         @include mixins.before-pseudo;
       }
 
-      &:not(.active,.open) > :first-child {
+      &:not(.active, .open)> :first-child {
         // Adds vuetify states
         @include vuetifyStates.states($active: false);
       }

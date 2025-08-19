@@ -8,8 +8,8 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   <!-- Dashboard -->
   <VerticalNavLink
     :item="{
-      title: 'Dashboard',
-      icon: 'bx-home-circle',
+      title: 'Main Dashboard',
+      icon: 'nu-dashboard',
       to: '/dashboard',
     }"
   />
@@ -19,7 +19,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   <VerticalNavLink
     :item="{
       title: 'سفارشات',
-      icon: 'bx-cart',
+      icon: 'nu-bag',
       to: '/orders',
     }"
   />
@@ -27,7 +27,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   <VerticalNavLink
     :item="{
       title: 'مشتریان',
-      icon: 'bx-user',
+      icon: 'nu-two-user',
       to: '/customers',
     }"
   />
@@ -38,7 +38,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   <VerticalNavLink
     :item="{
       title: 'Account Settings',
-      icon: 'bx-user',
+      icon: 'nu-folder',
       to: '/account-settings',
     }"
   />
@@ -47,7 +47,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   <VerticalNavLink
     :item="{
       title: 'Tables',
-      icon: 'bx-table',
+      icon: 'nu-export',
       to: '/tables',
     }"
   />
@@ -56,7 +56,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
     :item="{
       title: 'Form Layouts',
       icon: 'bx-detail',
-      to: '/form-layouts',
+       icon: 'nu-setting',
     }"
   />
 </template>
