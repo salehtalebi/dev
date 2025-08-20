@@ -5,86 +5,88 @@ import { authAPI } from '@/services/api'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-export const useAuthStore = defineStore('auth', () => {
-  // State
-  const user = ref(null)
-  const token = ref(localStorage.getItem('wp_token'))
-  const isLoading = ref(false)
+import { defineStore } from 'pinia'
+import salesDashboardAPI from '@/services/api'
 
-  // Getters
-  const isAuthenticated = computed(() => !!token.value && !!user.value)
-  const isAdmin = computed(() => {
-    return user.value && (
-      user.value.roles?.includes('administrator') || 
-      user.value.roles?.includes('shop_manager')
-    )
-  })
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    user: null,
+    token: localStorage.getItem('auth_token'),
+    isAuthenticated: false,
+    loading: false,
+    error: null,
+  }),
 
-  // Actions
-  const login = async (credentials) => {
-    try {
-      isLoading.value = true
-      const response = await authAPI.login(credentials)
-      
-      token.value = response.token
-      localStorage.setItem('wp_token', response.token)
-      
-      // Get user info
-      await fetchUser()
-      
-      return { success: true }
-    } catch (error) {
-      console.error('Login error:', error)
-      return { 
-        success: false, 
-        message: error.response?.data?.message || 'خطای لاگین' 
+  getters: {
+    isLoggedIn: (state) => !!state.token && state.isAuthenticated,
+    userRole: (state) => state.user?.roles?.[0] || null,
+    isAdmin: (state) => {
+      const allowedRoles = ['administrator', 'shop_manager']
+      return state.user?.roles?.some(role => allowedRoles.includes(role)) || false
+    },
+  },
+
+  actions: {
+    async login(credentials) {
+      this.loading = true
+      this.error = null
+
+      try {
+        const response = await salesDashboardAPI.login(credentials)
+        
+        if (response.token && response.user) {
+          this.token = response.token
+          this.user = response.user
+          this.isAuthenticated = true
+          
+          // Store token in localStorage
+          localStorage.setItem('auth_token', response.token)
+          
+          return { success: true, user: response.user }
+        } else {
+          throw new Error('Invalid response format')
+        }
+      } catch (error) {
+        this.error = error.message
+        return { success: false, message: error.message }
+      } finally {
+        this.loading = false
       }
-    } finally {
-      isLoading.value = false
-    }
-  }
+    },
 
-  const fetchUser = async () => {
-    try {
-      const userData = await authAPI.me()
-      user.value = userData
-    } catch (error) {
-      console.error('Fetch user error:', error)
-      logout()
-    }
-  }
+    async logout() {
+      this.user = null
+      this.token = null
+      this.isAuthenticated = false
+      this.error = null
+      
+      // Remove token from localStorage
+      localStorage.removeItem('auth_token')
+    },
 
-  const logout = () => {
-    user.value = null
-    token.value = null
-    localStorage.removeItem('wp_token')
-  }
+    async validateToken() {
+      if (!this.token) {
+        return false
+      }
 
-  const validateToken = async () => {
-    try {
-      await authAPI.validate()
-      await fetchUser()
-      return true
-    } catch (error) {
-      logout()
-      return false
-    }
-  }
+      try {
+        const response = await salesDashboardAPI.validateToken()
+        
+        if (response.valid) {
+          this.isAuthenticated = true
+          return true
+        } else {
+          await this.logout()
+          return false
+        }
+      } catch (error) {
+        await this.logout()
+        return false
+      }
+    },
 
-  return {
-    // State
-    user,
-    token,
-    isLoading,
-    
-    // Getters
-    isAuthenticated,
-    isAdmin,
-    
-    // Actions
-    login,
-    logout,
-    fetchUser,
-    validateToken
-  }
+    clearError() {
+      this.error = null
+    },
+  },
 })

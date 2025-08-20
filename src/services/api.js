@@ -1,242 +1,108 @@
-/**
- * API Service for WordPress & WooCommerce Integration
- * Base URL should be your main domain: academy.com
- */
 import axios from 'axios'
 
-// Base configuration for WordPress API
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:2145/nuvior'
-const WP_API_BASE = `${API_BASE_URL}/wp-json/wp/v2`
-const WC_API_BASE = `${API_BASE_URL}/wp-json/wc/v3`
-const CUSTOM_API_BASE = `${API_BASE_URL}/wp-json/sales-dashboard/v1`
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://academy.com'
+const WP_API_ENDPOINT = import.meta.env.VITE_WP_API_ENDPOINT || '/wp-json/wp/v2'
+const WC_API_ENDPOINT = import.meta.env.VITE_WC_API_ENDPOINT || '/wp-json/wc/v3'
+const CUSTOM_API_ENDPOINT = import.meta.env.VITE_CUSTOM_API_ENDPOINT || '/wp-json/sales-dashboard/v1'
+const JWT_ENDPOINT = import.meta.env.VITE_JWT_ENDPOINT || '/wp-json/sales-dashboard/v1/auth'
 
-// Create axios instance
-const apiClient = axios.create({
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
+class SalesDashboardAPI {
+  constructor() {
+    this.apiClient = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+
+    // Add JWT token to requests
+    this.apiClient.interceptors.request.use(
+      (config) => {
+        const token = localStorage.getItem('auth_token')
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+      }
+    )
+
+    // Handle response errors
+    this.apiClient.interceptors.response.use(
+      (response) => response.data,
+      (error) => {
+        console.error('API Error:', error)
+        return Promise.reject(error)
+      }
+    )
   }
-})
 
-// Request interceptor to add auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('wp_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+  async request(endpoint, options = {}) {
+    const config = {
+      url: `${endpoint}`,
+      method: options.method || 'GET',
+      ...options
     }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
 
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired, redirect to login
-      localStorage.removeItem('wp_token')
-      window.location.href = '/login'
+    if (options.params) {
+      config.params = options.params
     }
-    return Promise.reject(error)
-  }
-)
 
-// WordPress Authentication API
-export const authAPI = {
-  // Login with WordPress JWT
-  login: async (credentials) => {
-    const response = await apiClient.post(`${API_BASE_URL}/wp-json/jwt-auth/v1/token`, credentials)
-    return response.data
-  },
-  
-  // Validate token
-  validate: async () => {
-    const response = await apiClient.post(`${API_BASE_URL}/wp-json/jwt-auth/v1/token/validate`)
-    return response.data
-  },
-  
-  // Get current user info
-  me: async () => {
-    const response = await apiClient.get(`${WP_API_BASE}/users/me`)
-    return response.data
-  }
-}
-
-// WooCommerce Orders API
-export const ordersAPI = {
-  // Get all orders with filters
-  getOrders: async (params = {}) => {
-    const response = await apiClient.get(`${WC_API_BASE}/orders`, { params })
-    return {
-      data: response.data,
-      totalCount: parseInt(response.headers['x-wp-total']),
-      totalPages: parseInt(response.headers['x-wp-totalpages'])
+    if (options.body) {
+      config.data = options.body
     }
-  },
-  
-  // Get single order
-  getOrder: async (orderId) => {
-    const response = await apiClient.get(`${WC_API_BASE}/orders/${orderId}`)
-    return response.data
-  },
-  
-  // Update order status
-  updateOrderStatus: async (orderId, status) => {
-    const response = await apiClient.put(`${WC_API_BASE}/orders/${orderId}`, { status })
-    return response.data
-  },
 
-  // Get orders by account manager (custom endpoint)
-  getOrdersByAccountManager: async (managerId, params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/orders/by-manager/${managerId}`, { params })
-    return response.data
-  },
-
-  // Get order statistics
-  getOrderStatistics: async (params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/orders/statistics`, { params })
-    return response.data
-  }
-}
-
-// WooCommerce Customers API
-export const customersAPI = {
-  // Get all customers
-  getCustomers: async (params = {}) => {
-    const response = await apiClient.get(`${WC_API_BASE}/customers`, { params })
-    return {
-      data: response.data,
-      totalCount: parseInt(response.headers['x-wp-total']),
-      totalPages: parseInt(response.headers['x-wp-totalpages'])
+    try {
+      const response = await this.apiClient(config)
+      return response
+    } catch (error) {
+      throw new Error(error.response?.data?.message || error.message || 'خطا در برقراری ارتباط با سرور')
     }
-  },
-  
-  // Get single customer
-  getCustomer: async (customerId) => {
-    const response = await apiClient.get(`${WC_API_BASE}/customers/${customerId}`)
-    return response.data
-  },
-  
-  // Get customer orders
-  getCustomerOrders: async (customerId, params = {}) => {
-    const response = await apiClient.get(`${WC_API_BASE}/orders`, { 
-      params: { customer: customerId, ...params } 
+  }
+
+  // Auth methods
+  async login(credentials) {
+    return await this.request(`${JWT_ENDPOINT}/login`, {
+      method: 'POST',
+      body: credentials
     })
-    return response.data
-  },
+  }
 
-  // Get customers by account manager
-  getCustomersByAccountManager: async (managerId, params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/customers/by-manager/${managerId}`, { params })
-    return response.data
-  },
+  async validateToken() {
+    return await this.request(`${JWT_ENDPOINT}/validate`, {
+      method: 'POST'
+    })
+  }
 
-  // Get customer statistics
-  getCustomerStatistics: async (customerId, params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/customers/${customerId}/statistics`, { params })
-    return response.data
+  // Orders methods
+  async getOrders(params = {}) {
+    return await this.request(WC_API_ENDPOINT + '/orders', { params })
+  }
+
+  async getOrder(orderId) {
+    return await this.request(`${WC_API_ENDPOINT}/orders/${orderId}`)
+  }
+
+  async updateOrder(orderId, data) {
+    return await this.request(`${WC_API_ENDPOINT}/orders/${orderId}`, {
+      method: 'PUT',
+      body: data
+    })
+  }
+
+  // Customers methods
+  async getCustomers(params = {}) {
+    return await this.request(WC_API_ENDPOINT + '/customers', { params })
+  }
+
+  async getCustomer(customerId) {
+    return await this.request(`${WC_API_ENDPOINT}/customers/${customerId}`)
+  }
+
+  // Analytics methods
+  async getAnalytics(params = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/dashboard`, { params })
   }
 }
 
-// Products API for dashboard stats
-export const productsAPI = {
-  // Get top selling products
-  getTopProducts: async (params = {}) => {
-    const response = await apiClient.get(`${WC_API_BASE}/products`, { params })
-    return response.data
-  },
-  
-  // Get product stats
-  getProductStats: async () => {
-    const response = await apiClient.get(`${WC_API_BASE}/reports/products`)
-    return response.data
-  }
-}
-
-// Reports API for dashboard analytics
-export const reportsAPI = {
-  // Sales reports
-  getSalesReport: async (period = 'week') => {
-    const response = await apiClient.get(`${WC_API_BASE}/reports/sales`, {
-      params: { period }
-    })
-    return response.data
-  },
-  
-  // Top sellers
-  getTopSellers: async (period = 'week') => {
-    const response = await apiClient.get(`${WC_API_BASE}/reports/top_sellers`, {
-      params: { period }
-    })
-    return response.data
-  },
-
-  // Custom dashboard analytics
-  getDashboardAnalytics: async (params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/dashboard`, { params })
-    return response.data
-  },
-
-  // Monthly comparison report
-  getMonthlyComparison: async () => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/monthly-comparison`)
-    return response.data
-  },
-
-  // Account manager performance
-  getAccountManagerPerformance: async (managerId, params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/analytics/manager/${managerId}`, { params })
-    return response.data
-  }
-}
-
-// Account Managers API (Custom)
-export const accountManagersAPI = {
-  // Get all account managers
-  getAccountManagers: async () => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/account-managers`)
-    return response.data
-  },
-
-  // Get account manager details
-  getAccountManager: async (managerId) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/account-managers/${managerId}`)
-    return response.data
-  },
-
-  // Assign customer to account manager
-  assignCustomer: async (customerId, managerId) => {
-    const response = await apiClient.post(`${CUSTOM_API_BASE}/account-managers/assign`, {
-      customer_id: customerId,
-      manager_id: managerId
-    })
-    return response.data
-  }
-}
-
-// Export API
-export const exportAPI = {
-  // Export orders
-  exportOrders: async (params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/export/orders`, {
-      params,
-      responseType: 'blob'
-    })
-    return response.data
-  },
-
-  // Export customers
-  exportCustomers: async (params = {}) => {
-    const response = await apiClient.get(`${CUSTOM_API_BASE}/export/customers`, {
-      params,
-      responseType: 'blob'
-    })
-    return response.data
-  }
-}
-
-export default apiClient
+export default new SalesDashboardAPI()
