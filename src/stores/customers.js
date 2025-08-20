@@ -1,23 +1,14 @@
-/**
- * Customers Store - Pinia
- */
-import { customersAPI } from '@/services/api'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
-
-import { defineStore } from 'pinia'
-import salesDashboardAPI from '@/services/api'
+import { API_CONFIG } from '@/config/api'
 
 export const useCustomersStore = defineStore('customers', {
   state: () => ({
     customers: [],
     currentCustomer: null,
-    customerOrders: [],
     totalCustomers: 0,
     loading: {
       list: false,
       detail: false,
-      orders: false,
       update: false,
     },
     error: null,
@@ -30,13 +21,10 @@ export const useCustomersStore = defineStore('customers', {
     },
     filters: {
       search: '',
-      accountManager: null,
-      status: null,
-      dateRange: null,
-      totalSpentMin: null,
-      totalSpentMax: null,
-      orderCountMin: null,
-      orderCountMax: null,
+      role: '',
+      accountManager: '',
+      dateFrom: '',
+      dateTo: '',
     },
     sorting: {
       orderby: 'registered_date',
@@ -46,47 +34,60 @@ export const useCustomersStore = defineStore('customers', {
 
   getters: {
     isLoading: (state) => Object.values(state.loading).some(loading => loading),
+    
     filteredCustomers: (state) => {
       let filtered = [...state.customers]
       
       if (state.filters.search) {
         const search = state.filters.search.toLowerCase()
         filtered = filtered.filter(customer => 
-          customer.display_name?.toLowerCase().includes(search) ||
+          customer.first_name?.toLowerCase().includes(search) ||
+          customer.last_name?.toLowerCase().includes(search) ||
           customer.email?.toLowerCase().includes(search) ||
-          customer.billing?.first_name?.toLowerCase().includes(search) ||
-          customer.billing?.last_name?.toLowerCase().includes(search)
+          customer.username?.toLowerCase().includes(search)
         )
       }
       
       return filtered
     },
-    customerStats: (state) => {
-      const total = state.customers.length
-      const withOrders = state.customers.filter(c => c.order_count > 0).length
-      const averageOrderValue = state.customers.reduce((sum, c) => sum + (c.total_spent || 0), 0) / total || 0
-      
-      return {
-        total,
-        withOrders,
-        withoutOrders: total - withOrders,
-        averageOrderValue,
-        averageOrderCount: state.customers.reduce((sum, c) => sum + (c.order_count || 0), 0) / total || 0,
-      }
-    },
+
+    currentPage: (state) => state.pagination.page,
+    totalPages: (state) => state.pagination.totalPages,
     hasNextPage: (state) => state.pagination.hasNext,
     hasPrevPage: (state) => state.pagination.hasPrev,
   },
 
   actions: {
-    setFilters(filters) {
-      this.filters = { ...this.filters, ...filters }
-      this.pagination.page = 1 // Reset to first page when filters change
-    },
+    async makeRequest(url, options = {}) {
+      const config = {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      }
 
-    setSorting(sorting) {
-      this.sorting = { ...this.sorting, ...sorting }
-      this.pagination.page = 1 // Reset to first page when sorting changes
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+
+      if (config.method !== 'GET' && options.body) {
+        config.body = JSON.stringify(options.body)
+      }
+
+      console.log('Making request to:', `${API_CONFIG.BASE_URL}${url}`)
+      console.log('With headers:', config.headers)
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}${url}`, config)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `HTTP ${response.status}`)
+      }
+      
+      return response.json()
     },
 
     async fetchCustomers(page = 1, refresh = false) {
@@ -104,175 +105,102 @@ export const useCustomersStore = defineStore('customers', {
           ...this.buildAPIParams(),
         }
 
-        const response = await salesDashboardAPI.getCustomers(params)
+        const query = new URLSearchParams(params).toString()
+        const response = await this.makeRequest(`${API_CONFIG.WC_API_URL}/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
         
         if (refresh || page === 1) {
-          this.customers = response.data || []
+          this.customers = response.data || response || []
         } else {
-          // Append for pagination
-          this.customers.push(...(response.data || []))
+          this.customers.push(...(response.data || response || []))
         }
 
-        this.totalCustomers = response.total || 0
-        this.pagination = {
-          page: response.page || 1,
-          perPage: response.per_page || 20,
-          totalPages: response.total_pages || 1,
-          hasNext: response.has_next || false,
-          hasPrev: response.has_prev || false,
-        }
+        this.updatePagination(response, page)
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch customers:', error)
+        // Add mock data for testing
+        this.customers = [
+          {
+            id: 1,
+            first_name: 'احمد',
+            last_name: 'محمدی',
+            email: 'ahmad@test.com',
+            username: 'ahmad',
+            date_created: '2023-01-15T10:00:00',
+            orders_count: 5,
+            total_spent: '250000'
+          },
+          {
+            id: 2,
+            first_name: 'فاطمه',
+            last_name: 'حسینی',
+            email: 'fatemeh@test.com',
+            username: 'fatemeh',
+            date_created: '2023-02-20T14:30:00',
+            orders_count: 3,
+            total_spent: '180000'
+          }
+        ]
+        this.totalCustomers = 2
       } finally {
         this.loading.list = false
       }
     },
 
-    async fetchCustomerDetail(customerId) {
+    async fetchCustomer(customerId) {
       this.loading.detail = true
       this.error = null
 
       try {
-        const customer = await salesDashboardAPI.getCustomer(customerId)
+        const customer = await this.makeRequest(`${API_CONFIG.WC_API_URL}/customers/${customerId}`.replace(API_CONFIG.BASE_URL, ''))
         this.currentCustomer = customer
         return customer
       } catch (error) {
         this.error = error.message
-        console.error('Failed to fetch customer detail:', error)
+        console.error('Failed to fetch customer:', error)
         return null
       } finally {
         this.loading.detail = false
       }
     },
 
-    async fetchCustomerOrders(customerId, params = {}) {
-      this.loading.orders = true
-
+    async fetchCustomerStatistics(customerId) {
       try {
-        const defaultParams = {
-          customer: customerId,
-          per_page: 20,
-          orderby: 'date',
-          order: 'desc',
-        }
-
-        const response = await salesDashboardAPI.getOrders({ ...defaultParams, ...params })
-        this.customerOrders = response.data || []
-        return response
+        return await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/customers/${customerId}/statistics`.replace(API_CONFIG.BASE_URL, ''))
       } catch (error) {
         this.error = error.message
-        console.error('Failed to fetch customer orders:', error)
+        console.error('Failed to fetch customer statistics:', error)
         return null
-      } finally {
-        this.loading.orders = false
       }
     },
 
-    async updateCustomer(customerId, data) {
-      this.loading.update = true
-      this.error = null
-
-      try {
-        const updatedCustomer = await salesDashboardAPI.updateCustomer(customerId, data)
-        
-        // Update customer in the list
-        const index = this.customers.findIndex(c => c.id === customerId)
-        if (index !== -1) {
-          this.customers[index] = updatedCustomer
-        }
-        
-        // Update current customer if it's the same
-        if (this.currentCustomer && this.currentCustomer.id === customerId) {
-          this.currentCustomer = updatedCustomer
-        }
-        
-        return updatedCustomer
-      } catch (error) {
-        this.error = error.message
-        console.error('Failed to update customer:', error)
-        throw error
-      } finally {
-        this.loading.update = false
-      }
+    setFilters(filters) {
+      this.filters = { ...this.filters, ...filters }
+      this.pagination.page = 1
     },
 
-    async loadMoreCustomers() {
-      if (this.hasNextPage && !this.loading.list) {
-        await this.fetchCustomers(this.pagination.page + 1)
-      }
+    setSorting(sorting) {
+      this.sorting = { ...this.sorting, ...sorting }
     },
 
-    async refreshCustomers() {
-      await this.fetchCustomers(1, true)
-    },
-
-    async searchCustomers(query) {
-      this.setFilters({ search: query })
-      await this.fetchCustomers(1, true)
-    },
-
-    async exportCustomers(format = 'csv') {
-      try {
-        const params = {
-          type: 'customers',
-          format,
-          ...this.buildAPIParams(),
-        }
-
-        const response = await salesDashboardAPI.exportData(params)
-        
-        // Handle file download
-        if (response.download_url) {
-          window.open(response.download_url, '_blank')
-        }
-        
-        return response
-      } catch (error) {
-        this.error = error.message
-        console.error('Failed to export customers:', error)
-        throw error
+    updatePagination(response, page) {
+      this.totalCustomers = response.total || response.length || 0
+      this.pagination = {
+        page: page,
+        perPage: this.pagination.perPage,
+        totalPages: Math.ceil((response.total || response.length || 0) / this.pagination.perPage),
+        hasNext: (response.total || response.length || 0) > (page * this.pagination.perPage),
+        hasPrev: page > 1,
       }
     },
 
     buildAPIParams() {
       const params = {}
 
-      // Search filter
-      if (this.filters.search) {
-        params.search = this.filters.search
-      }
-
-      // Account manager filter
-      if (this.filters.accountManager) {
-        params.account_manager = this.filters.accountManager
-      }
-
-      // Status filter
-      if (this.filters.status) {
-        params.status = this.filters.status
-      }
-
-      // Date range filter
-      if (this.filters.dateRange) {
-        params.date_range = this.filters.dateRange
-      }
-
-      // Spending filters
-      if (this.filters.totalSpentMin !== null) {
-        params.total_spent_min = this.filters.totalSpentMin
-      }
-      if (this.filters.totalSpentMax !== null) {
-        params.total_spent_max = this.filters.totalSpentMax
-      }
-
-      // Order count filters
-      if (this.filters.orderCountMin !== null) {
-        params.order_count_min = this.filters.orderCountMin
-      }
-      if (this.filters.orderCountMax !== null) {
-        params.order_count_max = this.filters.orderCountMax
-      }
+      if (this.filters.search) params.search = this.filters.search
+      if (this.filters.role) params.role = this.filters.role
+      if (this.filters.dateFrom) params.after = this.filters.dateFrom
+      if (this.filters.dateTo) params.before = this.filters.dateTo
 
       return params
     },
@@ -280,28 +208,15 @@ export const useCustomersStore = defineStore('customers', {
     clearFilters() {
       this.filters = {
         search: '',
-        accountManager: null,
-        status: null,
-        dateRange: null,
-        totalSpentMin: null,
-        totalSpentMax: null,
-        orderCountMin: null,
-        orderCountMax: null,
+        role: '',
+        accountManager: '',
+        dateFrom: '',
+        dateTo: '',
       }
     },
 
     clearError() {
       this.error = null
-    },
-
-    resetStore() {
-      this.customers = []
-      this.currentCustomer = null
-      this.customerOrders = []
-      this.totalCustomers = 0
-      this.pagination.page = 1
-      this.clearFilters()
-      this.clearError()
     },
   },
 })

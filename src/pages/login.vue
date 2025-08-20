@@ -11,8 +11,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const form = ref({
-  email: '',
-  password: '',
+  email: 'admin@test.com', // Default for testing
+  password: 'admin',       // Default for testing  
   remember: false,
 })
 
@@ -30,24 +30,39 @@ const handleLogin = async () => {
   errorMessage.value = ''
 
   try {
+    console.log('Attempting login with:', { 
+      username: form.value.email, 
+      password: '***hidden***' 
+    })
+
     const result = await authStore.login({
       username: form.value.email,
       password: form.value.password
     })
 
-    if (result.success) {
+    console.log('Login result:', result)
+
+    if (result && result.success) {
+      console.log('Login successful, user roles:', authStore.user?.roles)
+      console.log('Is admin?', authStore.isAdmin)
+      
       // Check if user has admin role
       if (authStore.isAdmin) {
-        router.push('/dashboard')
+        console.log('Admin user detected, redirecting to dashboard')
+        // Use replace instead of push to prevent back button issues
+        await router.replace('/dashboard')
       } else {
+        console.log('User role not sufficient:', authStore.user?.roles)
         errorMessage.value = 'شما مجوز دسترسی به این پنل را ندارید'
-        authStore.logout()
+        await authStore.logout()
       }
     } else {
-      errorMessage.value = result.message
+      errorMessage.value = result?.message || 'خطا در ورود به سیستم'
+      console.error('Login failed:', result)
     }
   } catch (error) {
-    errorMessage.value = 'خطای اتصال به سرور'
+    console.error('Login error:', error)
+    errorMessage.value = error.message || 'خطای اتصال به سرور'
   } finally {
     isLoading.value = false
   }
@@ -101,7 +116,18 @@ const handleLogin = async () => {
         </VCardText>
 
         <VCardText>
-          <VForm @submit.prevent="$router.push('/')">
+          <VForm @submit.prevent="handleLogin">
+            <!-- Error Message -->
+            <VAlert
+              v-if="errorMessage"
+              type="error"
+              class="mb-4"
+              closable
+              @click:close="errorMessage = ''"
+            >
+              {{ errorMessage }}
+            </VAlert>
+
             <VRow>
               <!-- email -->
               <VCol cols="12">
@@ -111,6 +137,8 @@ const handleLogin = async () => {
                   label="Email or Username"
                   type="email"
                   placeholder="johndoe@email.com"
+                  :disabled="isLoading"
+                  required
                 />
               </VCol>
 
@@ -123,6 +151,8 @@ const handleLogin = async () => {
                   :type="isPasswordVisible ? 'text' : 'password'"
                   autocomplete="password"
                   :append-inner-icon="isPasswordVisible ? 'bx-hide' : 'bx-show'"
+                  :disabled="isLoading"
+                  required
                   @click:append-inner="isPasswordVisible = !isPasswordVisible"
                 />
 
@@ -131,6 +161,7 @@ const handleLogin = async () => {
                   <VCheckbox
                     v-model="form.remember"
                     label="Remember me"
+                    :disabled="isLoading"
                   />
 
                   <a
@@ -145,6 +176,8 @@ const handleLogin = async () => {
                 <VBtn
                   block
                   type="submit"
+                  :loading="isLoading"
+                  :disabled="!form.email || !form.password"
                 >
                   Login
                 </VBtn>

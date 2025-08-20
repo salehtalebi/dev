@@ -1,8 +1,11 @@
 // API Configuration for Frontend
 export const API_CONFIG = {
-  // Base URLs
-  BASE_URL: process.env.VITE_API_BASE_URL || 'https://academy.com/wp-json/sales-dashboard/v1',
-  WP_API_URL: process.env.VITE_WP_API_URL || 'https://academy.com/wp-json/wp/v2',
+  // Base URLs from environment variables
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://academy.com',
+  WP_API_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_WP_API_ENDPOINT || '/wp-json/wp/v2'),
+  WC_API_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_WC_API_ENDPOINT || '/wp-json/wc/v3'),
+  CUSTOM_API_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_CUSTOM_API_ENDPOINT || '/wp-json/sales-dashboard/v1'),
+  JWT_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_JWT_ENDPOINT || '/wp-json/sales-dashboard/v1/auth'),
   
   // Account Managers
   MANAGERS: {
