@@ -164,6 +164,23 @@ export const useCustomersStore = defineStore('customers', {
       }
     },
 
+    async fetchCustomerOrders(customerId) {
+      this.loading.detail = true
+      this.error = null
+
+      try {
+        const customer = await this.makeRequest(`${API_CONFIG.WC_API_URL}/orders?customer=${customerId}`.replace(API_CONFIG.BASE_URL, ''))
+        this.currentCustomer = customer
+        return customer
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch customer:', error)
+        return null
+      } finally {
+        this.loading.detail = false
+      }
+    },
+
     async fetchCustomerStatistics(customerId) {
       try {
         return await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/customers/${customerId}/statistics`.replace(API_CONFIG.BASE_URL, ''))
