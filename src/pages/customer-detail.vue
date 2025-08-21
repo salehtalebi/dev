@@ -249,19 +249,27 @@ const router = useRouter()
 const customersStore = useCustomersStore()
 
 // Local state
-const customerId = route.params.id
+const customerId = parseInt(route.params.id)
 
 // Computed
-const customer = computed(() => customersStore.currentCustomer)
-const customerOrders = computed(() => customersStore.customerOrders)
+const customer = {};//computed(() => customersStore.currentCustomer)
+const customerOrders =[];// computed(() => customersStore.customerOrders)
 const customerStats = computed(() => customersStore.customerStats)
 const isLoading = computed(() => customersStore.isLoading)
 
+console.log("customer" , customer);
+
+
 // Methods
 const fetchCustomer = async () => {
-  try {
-    await customersStore.fetchCustomer(customerId)
-    await customersStore.fetchCustomerOrders(customerId)
+  
+   try {
+    const [cust, orders] = await Promise.all([
+      customersStore.fetchCustomer(customerId),
+      customersStore.fetchCustomerOrders(customerId),
+    ])
+    customer = cust        // ← ذخیره پاسخ در متغیر محلی
+    customerOrders = orders
   } catch (error) {
     console.error('Error fetching customer:', error)
     router.push('/customers')

@@ -18,7 +18,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
  
   <VerticalNavLink
     :item="{
-      title: 'سفارشات',
+      title: 'Orders Reports',
       icon: 'nu-bag',
       to: '/orders',
     }"
@@ -26,7 +26,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   
   <VerticalNavLink
     :item="{
-      title: 'مشتریان',
+      title: 'User Reports',
       icon: 'nu-two-user',
       to: '/customers',
     }"
@@ -37,7 +37,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
 
   <VerticalNavLink
     :item="{
-      title: 'Account Settings',
+      title: 'Cart & User Behavior',
       icon: 'nu-folder',
       to: '/account-settings',
     }"
@@ -46,7 +46,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
 
   <VerticalNavLink
     :item="{
-      title: 'Tables',
+      title: 'Export Reports',
       icon: 'nu-export',
       to: '/tables',
     }"
@@ -54,7 +54,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
   
   <VerticalNavLink
     :item="{
-      title: 'Form Layouts',
+      title: 'Settings',
       icon: 'bx-detail',
        icon: 'nu-setting',
     }"
