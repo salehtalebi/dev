@@ -6,7 +6,7 @@ import Footer from "@/layouts/components/Footer.vue";
 import NavbarThemeSwitcher from "@/layouts/components/NavbarThemeSwitcher.vue";
 import UserProfile from "@/layouts/components/UserProfile.vue";
 import { useRoute } from "vue-router";
-import { ref, watch } from 'vue'
+import { ref, watch , onMounted } from 'vue'
 
 
 const route = useRoute()
@@ -33,10 +33,12 @@ const checkRoute = (p) => {
 watch(
   () => route.fullPath,
   (n) => {
-    console.log('fullPath:', n)
     checkRoute(n)
   },
 )
+onMounted(() => {
+   checkRoute(route.fullPath)
+})
 
 </script>
 
@@ -53,7 +55,7 @@ watch(
           <VIcon icon="bx-menu" />
         </IconBtn>
 
-        <h1>{{ pageTitle }}</h1>
+        <h2 class="nu-page-title">{{ pageTitle }}</h2>
 
         <VSpacer />
 
@@ -124,6 +126,10 @@ watch(
     font-weight: 500;
     line-height: 1.75rem;
     text-transform: uppercase;
+  }
+
+  .nu-page-title{
+    
   }
 }
 </style>

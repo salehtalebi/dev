@@ -54,15 +54,15 @@ export const useOrdersStore = defineStore('orders', {
       return filtered
     },
 
-    orderStatuses: () => [
-      { value: 'pending', text: 'در انتظار پرداخت', color: 'warning' },
-      { value: 'processing', text: 'در حال پردازش', color: 'info' },
-      { value: 'on-hold', text: 'در انتظار', color: 'secondary' },
-      { value: 'completed', text: 'تکمیل شده', color: 'success' },
-      { value: 'cancelled', text: 'لغو شده', color: 'error' },
-      { value: 'refunded', text: 'بازپرداخت شده', color: 'error' },
-      { value: 'failed', text: 'ناموفق', color: 'error' },
-    ],
+ orderStatuses: () => [
+  { value: 'pending', text: 'Pending payment', color: 'warning' },
+  { value: 'processing', text: 'Processing', color: 'info' },
+  { value: 'on-hold', text: 'On hold', color: 'secondary' },
+  { value: 'completed', text: 'Completed', color: 'success' },
+  { value: 'cancelled', text: 'Cancelled', color: 'error' },
+  { value: 'refunded', text: 'Refunded', color: 'error' },
+  { value: 'failed', text: 'Failed', color: 'error' },
+],
 
     currentPage: (state) => state.pagination.page,
     totalPages: (state) => state.pagination.totalPages,

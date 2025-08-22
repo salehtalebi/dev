@@ -9,6 +9,8 @@ import twouser from '@images/icons/nuvior/two-user.svg'
 import setting from '@images/icons/nuvior/setting.svg'
 import folder from '@images/icons/nuvior/folder.svg'
 import exporticon from '@images/icons/nuvior/export.svg'
+import filter from '@images/icons/nuvior/filter.svg'
+
 
 const customIcons = {
   'mdi-checkbox-blank-outline': checkboxUnchecked,
@@ -22,6 +24,7 @@ const customIcons = {
   'nu-setting': setting,
   'nu-folder': folder,
   'nu-export': exporticon,
+  'nu-filter': filter,
 }
 
 const aliases = {
@@ -62,7 +65,8 @@ const aliases = {
   twouser: 'nu-two-user',
   setting: 'nu-setting',
   folder: 'nu-folder',
-  exporticon: 'nu-export'
+  exporticon: 'nu-export',
+  filter: 'nu-filter'
 }
 
 export const iconify = {

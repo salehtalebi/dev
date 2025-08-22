@@ -308,15 +308,15 @@ const getStatusColor = (status) => {
 }
 
 const getStatusText = (status) => {
-  const statusTexts = {
-    'pending': 'در انتظار پرداخت',
-    'processing': 'در حال پردازش',
-    'on-hold': 'در انتظار',
-    'completed': 'تکمیل شده',
-    'cancelled': 'لغو شده',
-    'refunded': 'بازگشت داده شده',
-    'failed': 'ناموفق'
-  }
+const statusTexts = {
+    'pending': 'Pending payment',
+    'processing': 'Processing',
+    'on-hold': 'On hold',
+    'completed': 'Completed',
+    'cancelled': 'Cancelled',
+    'refunded': 'Refunded',
+    'failed': 'Failed'
+}
   return statusTexts[status] || status
 }
 

@@ -221,12 +221,12 @@ export default {
         placeholder="جستجو در سفارشات..."
       />
       
-      <select v-model="statusFilter" @change="filterByStatus">
-        <option value="">همه وضعیت‌ها</option>
-        <option value="pending">در انتظار پرداخت</option>
-        <option value="processing">در حال پردازش</option>
-        <option value="completed">تکمیل شده</option>
-        <option value="cancelled">لغو شده</option>
+    <select v-model="statusFilter" @change="filterByStatus">
+        <option value="">All statuses</option>
+        <option value="pending">Pending payment</option>
+        <option value="processing">Processing</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
       </select>
       
       <button @click="exportOrders" :disabled="exporting">
