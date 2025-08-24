@@ -1,12 +1,13 @@
 /**
  * Export Composable - Updated to use API service
  */
-import salesDashboardAPI from '@/services/api'
+import { useAPI } from '@/composables/useAPI'
 import { ref } from 'vue'
 
 export function useExport() {
     const isExporting = ref(false)
     const error = ref(null)
+    const { exportOrders: apiExportOrders, exportCustomers: apiExportCustomers } = useAPI()
 
     const clearError = () => {
         error.value = null
@@ -51,7 +52,7 @@ export function useExport() {
         error.value = null
 
         try {
-            const response = await salesDashboardAPI.exportOrders(filters)
+            const response = await apiExportOrders(filters)
 
             if (response.data) {
                 // Convert data to CSV
@@ -85,7 +86,7 @@ export function useExport() {
         error.value = null
 
         try {
-            const response = await salesDashboardAPI.exportCustomers(filters)
+            const response = await apiExportCustomers(filters)
 
             if (response.data) {
                 // Convert data to CSV

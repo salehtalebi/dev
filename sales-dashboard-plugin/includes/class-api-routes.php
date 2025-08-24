@@ -440,12 +440,28 @@ class Sales_Dashboard_API_Routes {
                 $args['customer'] = $request->get_param('customer');
             }
             
-            if ($request->get_param('date_created_gmt')) {
-                $args['date_created_gmt'] = $request->get_param('date_created_gmt');
-            }
-            
             if ($request->get_param('search')) {
                 $args['search'] = $request->get_param('search');
+            }
+            
+            // Handle date range filters
+            if ($request->get_param('date_range')) {
+                $date_range = $request->get_param('date_range');
+                $date_args = $this->get_date_range_args($date_range);
+                if ($date_args) {
+                    $args = array_merge($args, $date_args);
+                }
+            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
+                // Handle custom date range
+                if ($request->get_param('date_from')) {
+                    $args['date_created'] = '>=' . $request->get_param('date_from');
+                }
+                if ($request->get_param('date_to')) {
+                    $end_date = $request->get_param('date_to') . ' 23:59:59';
+                    $args['date_created'] = isset($args['date_created']) 
+                        ? $args['date_created'] . '...' . $end_date
+                        : '<=' . $end_date;
+                }
             }
             
             // Handle account manager filter
@@ -496,6 +512,22 @@ class Sales_Dashboard_API_Routes {
             $formatted_orders = array();
             foreach ($orders as $order) {
                 $order_data = $this->format_order_data($order);
+                
+                // Apply amount filtering (post-query filtering)
+                $min_amount = $request->get_param('min_amount');
+                $max_amount = $request->get_param('max_amount');
+                
+                if ($min_amount !== null && $min_amount !== '') {
+                    if (floatval($order->get_total()) < floatval($min_amount)) {
+                        continue; // Skip this order
+                    }
+                }
+                
+                if ($max_amount !== null && $max_amount !== '') {
+                    if (floatval($order->get_total()) > floatval($max_amount)) {
+                        continue; // Skip this order
+                    }
+                }
                 
                 // Add account manager info
                 $customer_id = $order->get_customer_id();
@@ -1041,6 +1073,45 @@ class Sales_Dashboard_API_Routes {
         );
     }
     */
+    
+    /**
+     * Get date range arguments for WC_Order_Query
+     */
+    private function get_date_range_args($date_range) {
+        $args = array();
+        
+        switch ($date_range) {
+            case 'this_week':
+                $args['date_created'] = '>=' . date('Y-m-d', strtotime('monday this week'));
+                break;
+                
+            case 'this_month':
+                $args['date_created'] = '>=' . date('Y-m-01');
+                break;
+                
+            case 'last_month':
+                $start_of_last_month = date('Y-m-01', strtotime('-1 month'));
+                $end_of_last_month = date('Y-m-t', strtotime('-1 month'));
+                $args['date_created'] = $start_of_last_month . '...' . $end_of_last_month . ' 23:59:59';
+                break;
+                
+            case 'last_year':
+                $start_of_last_year = date('Y-01-01', strtotime('-1 year'));
+                $end_of_last_year = date('Y-12-31', strtotime('-1 year'));
+                $args['date_created'] = $start_of_last_year . '...' . $end_of_last_year . ' 23:59:59';
+                break;
+                
+            case 'last_7_days':
+                $args['date_created'] = '>=' . date('Y-m-d', strtotime('-7 days'));
+                break;
+                
+            case 'last_30_days':
+                $args['date_created'] = '>=' . date('Y-m-d', strtotime('-30 days'));
+                break;
+        }
+        
+        return $args;
+    }
     
     /**
      * Get manager performance - DEPRECATED: Use class-analytics.php instead

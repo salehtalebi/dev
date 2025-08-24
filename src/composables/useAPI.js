@@ -61,15 +61,15 @@ export function useAPI() {
   // Orders API
   const getOrders = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.WC_API_URL}/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
   const getOrder = async (orderId) => {
-    return await makeRequest(`${API_CONFIG.WC_API_URL}/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
   const updateOrder = async (orderId, data) => {
-    return await makeRequest(`${API_CONFIG.WC_API_URL}/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''), {
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''), {
       method: 'PUT',
       body: data
     })
@@ -78,11 +78,11 @@ export function useAPI() {
   // Customers API
   const getCustomers = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.WC_API_URL}/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
   const getCustomer = async (customerId) => {
-    return await makeRequest(`${API_CONFIG.WC_API_URL}/customers/${customerId}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers/${customerId}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
   const getCustomerStatistics = async (customerId) => {
@@ -93,6 +93,37 @@ export function useAPI() {
   const getAnalytics = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
     return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/dashboard${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const getTopProducts = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/top-products${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const getMonthlyRevenue = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/monthly-revenue${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const getSalesComparison = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/sales-comparison${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const getManagerPerformance = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/manager-performance${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  // Export API
+  const exportOrders = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const exportCustomers = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
   return {
@@ -113,6 +144,14 @@ export function useAPI() {
 
     // Analytics
     getAnalytics,
+    getTopProducts,
+    getMonthlyRevenue,
+    getSalesComparison,
+    getManagerPerformance,
+
+    // Export
+    exportOrders,
+    exportCustomers,
   }
 }
 

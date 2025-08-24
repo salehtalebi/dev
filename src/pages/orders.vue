@@ -209,16 +209,19 @@
                   <VIcon icon="bx-show" />
                 </VBtn>
               </template>
-            </VDataTable>
 
-            <!-- Pagination -->
-            <div class="d-flex justify-center mt-6">
-              <VPagination
-                v-model="currentPage"
-                :length="totalPages"
-                @update:model-value="fetchOrders"
-              />
-            </div>
+              <!-- Footer with VDataTableFooter -->
+              <template #bottom>
+                <VDataTableFooter
+                  :items-per-page-options="itemsPerPageOptions"
+                  :items-per-page="itemsPerPage"
+                  :page="currentPage"
+                  :items-length="totalOrders"
+                  @update:items-per-page="updateItemsPerPage"
+                  @update:page="updatePage"
+                />
+              </template>
+            </VDataTable>
           </VCardText>
         </VCard>
       </VCol>
@@ -230,7 +233,7 @@
 import { useExport } from '@/composables/useExport'
 import { useOrdersStore } from '@/stores/orders'
 import { format } from 'date-fns'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -289,11 +292,34 @@ const pageText = computed(() => {
 })
 
 const updateOptions = (options) => {
-  currentPage.value = options.page
-  itemsPerPage.value = options.itemsPerPage
-  ordersStore.setPage(options.page)
-  ordersStore.setItemsPerPage(options.itemsPerPage)
-  fetchOrders()
+  const pageChanged = currentPage.value !== options.page
+  const itemsPerPageChanged = itemsPerPage.value !== options.itemsPerPage
+  
+  if (pageChanged) currentPage.value = options.page
+  if (itemsPerPageChanged) itemsPerPage.value = options.itemsPerPage
+  
+  if (pageChanged) ordersStore.setPage(options.page)
+  if (itemsPerPageChanged) ordersStore.setPerPage(options.itemsPerPage)
+  
+  if (pageChanged || itemsPerPageChanged) {
+    fetchOrders()
+  }
+}
+
+const updateItemsPerPage = (newItemsPerPage) => {
+  if (itemsPerPage.value !== newItemsPerPage) {
+    itemsPerPage.value = newItemsPerPage
+    ordersStore.setPerPage(newItemsPerPage)
+    fetchOrders()
+  }
+}
+
+const updatePage = (newPage) => {
+  if (currentPage.value !== newPage) {
+    // Avoid reactive loop by checking if the page has actually changed
+    ordersStore.setPage(newPage)
+    fetchOrders()
+  }
 }
 
 // Computed
@@ -302,7 +328,11 @@ const isLoading = computed(() => ordersStore.isLoading)
 const totalPages = computed(() => ordersStore.totalPages)
 const currentPage = computed({
   get: () => ordersStore.currentPage,
-  set: (value) => ordersStore.setPage(value)
+  set: (value) => {
+    if (ordersStore.currentPage !== value) {
+      ordersStore.setPage(value)
+    }
+  }
 })
 const orderStatuses = computed(() => ordersStore.orderStatuses)
 
@@ -318,7 +348,7 @@ const headers = [
 
 // Methods
 const fetchOrders = () => {
-  ordersStore.fetchOrders()
+  ordersStore.fetchOrders(ordersStore.pagination.page)
 }
 
 const applyFilters = () => {
@@ -430,11 +460,6 @@ const exportOrders = async () => {
     console.error('Export error:', error)
   }
 }
-
-// Watch for page changes
-watch(currentPage, () => {
-  fetchOrders()
-})
 
 // Initialize
 onMounted(() => {

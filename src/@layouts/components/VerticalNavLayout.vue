@@ -1,6 +1,6 @@
 <script>
-import { useDisplay } from 'vuetify'
 import VerticalNav from '@layouts/components/VerticalNav.vue'
+import { useDisplay } from 'vuetify'
 
 export default defineComponent({
   setup(props, { slots }) {
@@ -18,10 +18,10 @@ export default defineComponent({
     return () => {
       // 👉 Vertical nav
       const verticalNav = h(VerticalNav, { isOverlayNavActive: isOverlayNavActive.value, toggleIsOverlayNavActive }, {
-        'nav-header': () => slots['vertical-nav-header']?.({ toggleIsOverlayNavActive }),
-        'before-nav-items': () => slots['before-vertical-nav-items']?.(),
-        'default': () => slots['vertical-nav-content']?.(),
-        'after-nav-items': () => slots['after-vertical-nav-items']?.(),
+        'nav-header': slots['vertical-nav-header'] ? () => slots['vertical-nav-header']({ toggleIsOverlayNavActive }) : undefined,
+        'before-nav-items': slots['before-vertical-nav-items'] ? () => slots['before-vertical-nav-items']() : undefined,
+        'default': slots['vertical-nav-content'] ? () => slots['vertical-nav-content']() : undefined,
+        'after-nav-items': slots['after-vertical-nav-items'] ? () => slots['after-vertical-nav-items']() : undefined,
       })
 
 

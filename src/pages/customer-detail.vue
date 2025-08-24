@@ -275,21 +275,16 @@
                   </tbody>
                 </VTable>
                 
-                <!-- Pagination -->
-                <div v-if="ordersPagination.totalPages > 1" class="d-flex justify-center align-center mt-4">
-                  <VPagination
-                    v-model="ordersPagination.currentPage"
-                    :length="ordersPagination.totalPages"
-                    :total-visible="5"
-                    @update:model-value="loadCustomerOrders"
-                  />
-                  
-                  <div class="text-caption ms-4">
-                    نمایش {{ ((ordersPagination.currentPage - 1) * ordersPerPage) + 1 }} تا
-                    {{ Math.min(ordersPagination.currentPage * ordersPerPage, ordersPagination.totalOrders) }}
-                    از {{ ordersPagination.totalOrders }} سفارش
-                  </div>
-                </div>
+                <!-- Pagination with VDataTableFooter -->
+                <VDataTableFooter
+                  v-model:items-per-page="ordersPerPage"
+                  :items-per-page-options="itemsPerPageOptions"
+                  :page="ordersPagination.currentPage"
+                  :items-length="ordersPagination.totalOrders"
+                  show-current-page
+                  @update:items-per-page="updateOrdersItemsPerPage"
+                  @update:page="updateOrdersPage"
+                />
               </div>
             </VCardText>
           </VCard>
@@ -317,6 +312,14 @@ const ordersPagination = ref({
   totalPages: 1,
   totalOrders: 0
 })
+
+// Items per page options
+const itemsPerPageOptions = [
+  { value: 10, title: '10' },
+  { value: 20, title: '20' },
+  { value: 50, title: '50' },
+  { value: 100, title: '100' }
+]
 
 // Computed
 const customer = computed(() => customersStore.currentCustomer)
@@ -364,6 +367,18 @@ const viewOrder = (orderId) => {
 
 const viewOrders = () => {
   router.push(`/orders?customer=${customerId}`)
+}
+
+// Pagination methods
+const updateOrdersItemsPerPage = (newItemsPerPage) => {
+  ordersPerPage.value = newItemsPerPage
+  ordersPagination.value.currentPage = 1
+  loadCustomerOrders()
+}
+
+const updateOrdersPage = (newPage) => {
+  ordersPagination.value.currentPage = newPage
+  loadCustomerOrders()
 }
 
 const getInitials = (firstName, lastName) => {

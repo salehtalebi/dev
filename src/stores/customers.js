@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/config/api'
+import { useAPI } from '@/composables/useAPI'
 import { defineStore } from 'pinia'
 
 export const useCustomersStore = defineStore('customers', {
@@ -60,36 +60,10 @@ export const useCustomersStore = defineStore('customers', {
   },
 
   actions: {
-    async makeRequest(url, options = {}) {
-      const config = {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
-        },
-        ...options
-      }
-
-      const token = localStorage.getItem('auth_token')
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-
-      if (config.method !== 'GET' && options.body) {
-        config.body = JSON.stringify(options.body)
-      }
-
-      console.log('Making request to:', `${API_CONFIG.BASE_URL}${url}`)
-      console.log('With headers:', config.headers)
-
-      const response = await fetch(`${API_CONFIG.BASE_URL}${url}`, config)
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP ${response.status}`)
-      }
-
-      return response.json()
+    // Initialize API instance
+    _getAPI() {
+      const { getCustomers, getCustomer, getCustomerStatistics } = useAPI()
+      return { getCustomers, getCustomer, getCustomerStatistics }
     },
 
     async fetchCustomers(page = 1, refresh = false) {
@@ -108,7 +82,8 @@ export const useCustomersStore = defineStore('customers', {
         }
 
         const query = new URLSearchParams(params).toString()
-        const response = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const response = await api.getCustomers(params)
 
         if (refresh || page === 1) {
           this.customers = response.data || response || []
@@ -116,12 +91,16 @@ export const useCustomersStore = defineStore('customers', {
           this.customers.push(...(response.data || response || []))
         }
 
-        // Update pagination based on response
-        this.totalCustomers = response.total || (response.data ? response.data.length : 0)
-        this.pagination.page = page
-        this.pagination.totalPages = Math.ceil(this.totalCustomers / this.pagination.perPage)
+        // Update pagination based on response - avoid reactive loops
+        this.totalCustomers = response.total || 0
+        this.pagination.totalPages = Math.ceil((response.total || 0) / this.pagination.perPage)
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
+
+        // Only update page if different to prevent loops
+        if (this.pagination.page !== page) {
+          this.pagination.page = page
+        }
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch customers:', error)
@@ -159,7 +138,8 @@ export const useCustomersStore = defineStore('customers', {
       this.error = null
 
       try {
-        const customer = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers/${customerId}`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const customer = await api.getCustomer(customerId)
         this.currentCustomer = customer
         return customer
       } catch (error) {
@@ -202,8 +182,8 @@ export const useCustomersStore = defineStore('customers', {
           orderby: 'date',
           order: 'desc'
         }
-        const query = new URLSearchParams(params).toString()
-        const orders = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders?${query}`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const orders = await api.getOrders(params)
         this.customerOrders = orders.data || orders || []
         return {
           data: this.customerOrders,
@@ -236,7 +216,8 @@ export const useCustomersStore = defineStore('customers', {
       this.error = null
 
       try {
-        const stats = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/customers/${customerId}/statistics`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const stats = await api.getCustomerStatistics(customerId)
         this.customerStats = stats
         return stats
       } catch (error) {
@@ -262,6 +243,15 @@ export const useCustomersStore = defineStore('customers', {
 
     setFilters(filters) {
       this.filters = { ...this.filters, ...filters }
+      this.pagination.page = 1
+    },
+
+    setPage(page) {
+      this.pagination.page = page
+    },
+
+    setPerPage(perPage) {
+      this.pagination.perPage = perPage
       this.pagination.page = 1
     },
 

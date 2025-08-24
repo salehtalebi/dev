@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/config/api'
+import { useAPI } from '@/composables/useAPI'
 import { defineStore } from 'pinia'
 
 export const useOrdersStore = defineStore('orders', {
@@ -24,6 +24,7 @@ export const useOrdersStore = defineStore('orders', {
       search: '',
       customer: '',
       accountManager: '',
+      dateRange: '',
       dateFrom: '',
       dateTo: '',
       minAmount: null,
@@ -71,36 +72,10 @@ export const useOrdersStore = defineStore('orders', {
   },
 
   actions: {
-    async makeRequest(url, options = {}) {
-      const config = {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
-        },
-        ...options
-      }
-
-      const token = localStorage.getItem('auth_token')
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-
-      if (config.method !== 'GET' && options.body) {
-        config.body = JSON.stringify(options.body)
-      }
-
-      console.log('Making request to:', `${API_CONFIG.BASE_URL}${url}`)
-      console.log('With headers:', config.headers)
-
-      const response = await fetch(`${API_CONFIG.BASE_URL}${url}`, config)
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP ${response.status}`)
-      }
-
-      return response.json()
+    // Initialize API instance
+    _getAPI() {
+      const { getOrders, getOrder, updateOrder } = useAPI()
+      return { getOrders, getOrder, updateOrder }
     },
 
     async fetchOrders(page = 1, refresh = false) {
@@ -119,7 +94,8 @@ export const useOrdersStore = defineStore('orders', {
         }
 
         const query = new URLSearchParams(params).toString()
-        const response = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const response = await api.getOrders(params)
 
         if (refresh || page === 1) {
           this.orders = response.data || response || []
@@ -127,12 +103,16 @@ export const useOrdersStore = defineStore('orders', {
           this.orders.push(...(response.data || response || []))
         }
 
-        // Update pagination based on response
-        this.totalOrders = response.total || (response.data ? response.data.length : 0)
-        this.pagination.page = page
-        this.pagination.totalPages = Math.ceil(this.totalOrders / this.pagination.perPage)
+        // Update pagination based on response - avoid reactive loops
+        this.totalOrders = response.total || 0
+        this.pagination.totalPages = Math.ceil((response.total || 0) / this.pagination.perPage)
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
+
+        // Only update page if different to prevent loops
+        if (this.pagination.page !== page) {
+          this.pagination.page = page
+        }
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch orders:', error)
@@ -164,7 +144,8 @@ export const useOrdersStore = defineStore('orders', {
       this.error = null
 
       try {
-        const order = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''))
+        const api = this._getAPI()
+        const order = await api.getOrder(orderId)
         this.currentOrder = order
         return order
       } catch (error) {
@@ -181,10 +162,8 @@ export const useOrdersStore = defineStore('orders', {
       this.error = null
 
       try {
-        const updatedOrder = await this.makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders/${orderId}/status`.replace(API_CONFIG.BASE_URL, ''), {
-          method: 'PUT',
-          body: { status }
-        })
+        const api = this._getAPI()
+        const updatedOrder = await api.updateOrder(orderId, { status })
 
         // Update order in the list
         const index = this.orders.findIndex(o => o.id === orderId)
@@ -212,6 +191,15 @@ export const useOrdersStore = defineStore('orders', {
       this.pagination.page = 1
     },
 
+    setPage(page) {
+      this.pagination.page = page
+    },
+
+    setPerPage(perPage) {
+      this.pagination.perPage = perPage
+      this.pagination.page = 1
+    },
+
     setSorting(sorting) {
       this.sorting = { ...this.sorting, ...sorting }
     },
@@ -234,10 +222,22 @@ export const useOrdersStore = defineStore('orders', {
       if (this.filters.status) params.status = this.filters.status
       if (this.filters.customer) params.customer = this.filters.customer
       if (this.filters.accountManager) params.account_manager = this.filters.accountManager
-      if (this.filters.dateFrom) params.after = this.filters.dateFrom
-      if (this.filters.dateTo) params.before = this.filters.dateTo
-      if (this.filters.minAmount !== null) params.min_amount = this.filters.minAmount
-      if (this.filters.maxAmount !== null) params.max_amount = this.filters.maxAmount
+
+      // Handle dateRange preset values
+      if (this.filters.dateRange && this.filters.dateRange !== 'custom') {
+        params.date_range = this.filters.dateRange
+      } else {
+        // Handle custom date range
+        if (this.filters.dateFrom) params.date_from = this.filters.dateFrom
+        if (this.filters.dateTo) params.date_to = this.filters.dateTo
+      }
+
+      if (this.filters.minAmount !== null && this.filters.minAmount !== '') {
+        params.min_amount = this.filters.minAmount
+      }
+      if (this.filters.maxAmount !== null && this.filters.maxAmount !== '') {
+        params.max_amount = this.filters.maxAmount
+      }
 
       return params
     },
@@ -248,6 +248,7 @@ export const useOrdersStore = defineStore('orders', {
         search: '',
         customer: '',
         accountManager: '',
+        dateRange: '',
         dateFrom: '',
         dateTo: '',
         minAmount: null,

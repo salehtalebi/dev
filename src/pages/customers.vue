@@ -210,12 +210,12 @@
               <!-- Enhanced Footer -->
               <template #bottom>
                 <VDataTableFooter
-                  v-model:items-per-page="itemsPerPage"
-                  v-model:page="currentPage"
-                  :items-length="totalCustomers"
-                  :page-text="pageText"
                   :items-per-page-options="itemsPerPageOptions"
-                  show-current-page
+                  :items-per-page="itemsPerPage"
+                  :page="currentPage"
+                  :items-length="totalCustomers"
+                  @update:items-per-page="updateItemsPerPage"
+                  @update:page="updatePage"
                 />
               </template>
             </VDataTable>
@@ -230,7 +230,7 @@
 import { useExport } from '@/composables/useExport'
 import { useCustomersStore } from '@/stores/customers'
 import { format } from 'date-fns'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -288,11 +288,34 @@ const pageText = computed(() => {
 })
 
 const updateOptions = (options) => {
-  currentPage.value = options.page
-  itemsPerPage.value = options.itemsPerPage
-  customersStore.setPage(options.page)
-  customersStore.setItemsPerPage?.(options.itemsPerPage)
-  fetchCustomers()
+  const pageChanged = currentPage.value !== options.page
+  const itemsPerPageChanged = itemsPerPage.value !== options.itemsPerPage
+  
+  if (pageChanged) currentPage.value = options.page
+  if (itemsPerPageChanged) itemsPerPage.value = options.itemsPerPage
+  
+  if (pageChanged) customersStore.setPage(options.page)
+  if (itemsPerPageChanged) customersStore.setPerPage(options.itemsPerPage)
+  
+  if (pageChanged || itemsPerPageChanged) {
+    fetchCustomers()
+  }
+}
+
+const updateItemsPerPage = (newItemsPerPage) => {
+  if (itemsPerPage.value !== newItemsPerPage) {
+    itemsPerPage.value = newItemsPerPage
+    customersStore.setPerPage(newItemsPerPage)
+    fetchCustomers()
+  }
+}
+
+const updatePage = (newPage) => {
+  if (currentPage.value !== newPage) {
+    // Avoid reactive loop by checking if the page has actually changed
+    customersStore.setPage(newPage)
+    fetchCustomers()
+  }
 }
 
 // Computed
@@ -301,7 +324,11 @@ const isLoading = computed(() => customersStore.isLoading)
 const totalPages = computed(() => customersStore.totalPages)
 const currentPage = computed({
   get: () => customersStore.currentPage,
-  set: (value) => customersStore.setPage(value)
+  set: (value) => {
+    if (customersStore.currentPage !== value) {
+      customersStore.setPage(value)
+    }
+  }
 })
 
 // Table headers
@@ -316,7 +343,7 @@ const headers = [
 
 // Methods
 const fetchCustomers = () => {
-  customersStore.fetchCustomers()
+  customersStore.fetchCustomers(customersStore.pagination.page)
 }
 
 const applyFilters = () => {
@@ -423,11 +450,6 @@ const exportCustomers = async () => {
     console.error('Export error:', error)
   }
 }
-
-// Watch for page changes
-watch(currentPage, () => {
-  fetchCustomers()
-})
 
 // Initialize
 onMounted(() => {

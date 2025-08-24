@@ -1,7 +1,7 @@
 /**
  * Dashboard Store for Sales Dashboard
  */
-import salesDashboardAPI from '@/services/api'
+import { useAPI } from '@/composables/useAPI'
 import { defineStore } from 'pinia'
 
 export const useDashboardStore = defineStore('dashboard', {
@@ -52,6 +52,19 @@ export const useDashboardStore = defineStore('dashboard', {
   },
 
   actions: {
+    // Initialize API instance
+    _getAPI() {
+      const { getAnalytics, getOrders, getTopProducts, getMonthlyRevenue, getSalesComparison, getManagerPerformance } = useAPI()
+      return {
+        getAnalytics,
+        getOrders,
+        getTopProducts,
+        getMonthlyRevenue,
+        getSalesComparison,
+        getManagerPerformance
+      }
+    },
+
     setFilters(filters) {
       this.filters = { ...this.filters, ...filters }
     },
@@ -65,7 +78,8 @@ export const useDashboardStore = defineStore('dashboard', {
       try {
         console.log('Fetching dashboard stats...')
         const params = this.buildAPIParams()
-        const stats = await salesDashboardAPI.getAnalytics(params)
+        const api = this._getAPI()
+        const stats = await api.getAnalytics(params)
 
         this.stats = {
           totalOrders: stats.total_orders || 0,
@@ -96,7 +110,8 @@ export const useDashboardStore = defineStore('dashboard', {
           order: 'desc',
         }
 
-        const response = await salesDashboardAPI.getOrders(params)
+        const api = this._getAPI()
+        const response = await api.getOrders(params)
         this.recentOrders = response.data || []
       } catch (error) {
         this.error = error.message
@@ -111,7 +126,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
       try {
         const params = this.buildAPIParams()
-        const response = await salesDashboardAPI.getTopProducts(params)
+        const api = this._getAPI()
+        const response = await api.getTopProducts(params)
         this.topProducts = response.data || []
       } catch (error) {
         this.error = error.message
@@ -126,7 +142,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
       try {
         const params = this.buildAPIParams()
-        const response = await salesDashboardAPI.getMonthlyRevenue(params)
+        const api = this._getAPI()
+        const response = await api.getMonthlyRevenue(params)
         this.monthlyRevenue = response.data || []
       } catch (error) {
         this.error = error.message
@@ -141,7 +158,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
       try {
         const params = this.buildAPIParams()
-        const response = await salesDashboardAPI.getSalesComparison(params)
+        const api = this._getAPI()
+        const response = await api.getSalesComparison(params)
 
         this.salesComparison = {
           currentMonth: response.current_month || 0,
@@ -161,7 +179,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
       try {
         const params = this.buildAPIParams()
-        const response = await salesDashboardAPI.getManagerPerformance(params)
+        const api = this._getAPI()
+        const response = await api.getManagerPerformance(params)
         this.managerPerformance = response.data || []
       } catch (error) {
         this.error = error.message
