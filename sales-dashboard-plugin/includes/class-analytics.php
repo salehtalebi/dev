@@ -49,6 +49,27 @@ class Sales_Dashboard_Analytics {
             'permission_callback' => array($this, 'check_permissions')
         ));
         
+        // Monthly revenue - NEW
+        register_rest_route('sales-dashboard/v1', '/analytics/monthly-revenue', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_monthly_revenue'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
+        // Sales comparison - NEW  
+        register_rest_route('sales-dashboard/v1', '/analytics/sales-comparison', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_sales_comparison'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
+        // Manager performance - NEW
+        register_rest_route('sales-dashboard/v1', '/analytics/manager-performance', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_manager_performance'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
         // Account manager analytics
         register_rest_route('sales-dashboard/v1', '/analytics/manager/(?P<id>\d+)', array(
             'methods' => 'GET',
@@ -58,349 +79,493 @@ class Sales_Dashboard_Analytics {
     }
     
     /**
-     * Get dashboard analytics
+     * Get dashboard analytics  
      */
     public function get_dashboard_analytics($request) {
-        global $wpdb;
-        
-        $period = $request->get_param('period') ?: 'month';
-        $manager_id = $request->get_param('manager_id');
-        
-        $cache_key = 'sales_dashboard_analytics_' . $period . '_' . ($manager_id ?: 'all');
-        $cached_data = wp_cache_get($cache_key, 'sales_dashboard');
-        
-        if ($cached_data !== false) {
-            return $cached_data;
-        }
-        
-        // Base conditions
-        $where_conditions = array("status IN ('wc-completed', 'wc-processing')");
-        $customer_filter = '';
-        
-        if ($manager_id) {
-            $customer_ids = $wpdb->get_col($wpdb->prepare("
-                SELECT customer_id FROM {$wpdb->prefix}customer_account_managers 
-                WHERE manager_id = %d
-            ", $manager_id));
+        try {
+            $period = $request->get_param('period') ?: 'month';
+            $manager_id = $request->get_param('manager_id');
             
-            if (!empty($customer_ids)) {
-                $customer_ids_str = implode(',', array_map('intval', $customer_ids));
-                $where_conditions[] = "customer_id IN ($customer_ids_str)";
-                $customer_filter = "AND customer_id IN ($customer_ids_str)";
-            } else {
-                $empty_result = array(
-                    'total_revenue' => 0,
-                    'total_orders' => 0,
-                    'new_customers' => 0,
-                    'average_order_value' => 0,
-                    'growth_percentage' => 0,
-                    'period' => $period
-                );
-                wp_cache_set($cache_key, $empty_result, 'sales_dashboard', 300);
-                return $empty_result;
+            // Simple stats without complex queries first
+            $current_month_start = date('Y-m-01 00:00:00');
+            $current_month_end = date('Y-m-t 23:59:59');
+            
+            // Get basic stats using limited queries to avoid memory issues
+            $current_orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $current_month_start . '...' . $current_month_end,
+                'limit' => 1000, // Limit to avoid memory exhaustion
+                'return' => 'objects'
+            ));
+            
+            $total_orders = count($current_orders);
+            $total_revenue = 0;
+            $customer_ids = array();
+            
+            foreach ($current_orders as $order) {
+                $total_revenue += $order->get_total();
+                if ($order->get_customer_id() > 0) {
+                    $customer_ids[] = $order->get_customer_id();
+                }
             }
+            
+            $average_order_value = $total_orders > 0 ? $total_revenue / $total_orders : 0;
+            $new_customers = count(array_unique($customer_ids));
+            
+            // Get previous month for growth calculation (also limited)
+            $prev_month_start = date('Y-m-01 00:00:00', strtotime('-1 month'));
+            $prev_month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
+            
+            $prev_orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $prev_month_start . '...' . $prev_month_end,
+                'limit' => 1000, // Also limit previous month
+                'return' => 'objects'
+            ));
+            
+            $prev_revenue = 0;
+            foreach ($prev_orders as $order) {
+                $prev_revenue += $order->get_total();
+            }
+            
+            $growth_percentage = $prev_revenue > 0 ? 
+                (($total_revenue - $prev_revenue) / $prev_revenue) * 100 : 0;
+            
+            // Clear memory
+            unset($current_orders, $prev_orders);
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+            
+            $result = array(
+                'todayOrders' => $total_orders, // Frontend expects this key
+                'todayRevenue' => $total_revenue, // Frontend expects this key
+                'newCustomers' => $new_customers,
+                'averageOrderValue' => $average_order_value,
+                'ordersGrowth' => round($growth_percentage, 2),
+                'revenueGrowth' => round($growth_percentage, 2),
+                'total_revenue' => $total_revenue,
+                'total_orders' => $total_orders,
+                'average_order_value' => $average_order_value,
+                'growth_percentage' => round($growth_percentage, 2),
+                'period' => $period
+            );
+            
+            return rest_ensure_response($result);
+            
+        } catch (Exception $e) {
+            error_log('Sales Dashboard Analytics Error: ' . $e->getMessage());
+            return new WP_Error('analytics_error', 'خطا در دریافت آمار داشبورد: ' . $e->getMessage(), array('status' => 500));
         }
-        
-        // Date ranges
-        $current_period = $this->get_date_range($period, 'current');
-        $previous_period = $this->get_date_range($period, 'previous');
-        
-        // Current period stats
-        $current_stats = $wpdb->get_row($wpdb->prepare("
-            SELECT 
-                COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_revenue,
-                COALESCE(AVG(total_amount), 0) as average_order_value
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE " . implode(' AND ', $where_conditions) . "
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-        ", $current_period['start'], $current_period['end']));
-        
-        // Previous period stats for comparison
-        $previous_stats = $wpdb->get_row($wpdb->prepare("
-            SELECT 
-                COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_revenue
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE " . implode(' AND ', $where_conditions) . "
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-        ", $previous_period['start'], $previous_period['end']));
-        
-        // New customers count
-        $new_customers = $wpdb->get_var($wpdb->prepare("
-            SELECT COUNT(DISTINCT customer_id)
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE customer_id > 0
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-            AND customer_id NOT IN (
-                SELECT DISTINCT customer_id 
-                FROM {$wpdb->prefix}wc_orders 
-                WHERE customer_id > 0 
-                AND date_created_gmt < %s
-            )
-            $customer_filter
-        ", $current_period['start'], $current_period['end'], $current_period['start']));
-        
-        // Calculate growth percentage
-        $growth_percentage = 0;
-        if ($previous_stats->total_revenue > 0) {
-            $growth_percentage = (($current_stats->total_revenue - $previous_stats->total_revenue) / $previous_stats->total_revenue) * 100;
-        }
-        
-        $result = array(
-            'total_revenue' => (float) $current_stats->total_revenue,
-            'total_orders' => (int) $current_stats->total_orders,
-            'new_customers' => (int) $new_customers,
-            'average_order_value' => (float) $current_stats->average_order_value,
-            'growth_percentage' => round($growth_percentage, 2),
-            'previous_period' => array(
-                'total_revenue' => (float) $previous_stats->total_revenue,
-                'total_orders' => (int) $previous_stats->total_orders
-            ),
-            'period' => $period
-        );
-        
-        wp_cache_set($cache_key, $result, 'sales_dashboard', 300); // Cache for 5 minutes
-        return $result;
     }
     
     /**
      * Get monthly comparison data
      */
     public function get_monthly_comparison($request) {
-        global $wpdb;
-        
-        $manager_id = $request->get_param('manager_id');
-        $months_count = min($request->get_param('months') ?: 12, 24);
-        
-        $customer_filter = '';
-        if ($manager_id) {
-            $customer_ids = $wpdb->get_col($wpdb->prepare("
-                SELECT customer_id FROM {$wpdb->prefix}customer_account_managers 
-                WHERE manager_id = %d
-            ", $manager_id));
+        try {
+            $manager_id = $request->get_param('manager_id');
+            $months_count = min($request->get_param('months') ?: 12, 24);
             
-            if (!empty($customer_ids)) {
-                $customer_ids_str = implode(',', array_map('intval', $customer_ids));
-                $customer_filter = "AND customer_id IN ($customer_ids_str)";
-            } else {
-                return array('monthly_data' => array());
+            // Get date range
+            $start_date = date('Y-m-01', strtotime("-{$months_count} months"));
+            $end_date = date('Y-m-t');
+            
+            $orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $start_date . '...' . $end_date,
+                'limit' => -1,
+                'return' => 'objects'
+            ));
+            
+            $monthly_data = array();
+            
+            foreach ($orders as $order) {
+                $month = $order->get_date_created()->format('Y-m');
+                
+                // Skip if manager filter is set and customer is not assigned
+                if ($manager_id) {
+                    $customer_id = $order->get_customer_id();
+                    if (!$customer_id) continue;
+                    
+                    $customer_manager = get_user_meta($customer_id, 'account_manager_id', true);
+                    if ($customer_manager != $manager_id) continue;
+                }
+                
+                if (!isset($monthly_data[$month])) {
+                    $monthly_data[$month] = array(
+                        'month' => $month,
+                        'orders_count' => 0,
+                        'revenue' => 0,
+                        'unique_customers' => array()
+                    );
+                }
+                
+                $monthly_data[$month]['orders_count']++;
+                $monthly_data[$month]['revenue'] += $order->get_total();
+                
+                $customer_id = $order->get_customer_id();
+                if ($customer_id) {
+                    $monthly_data[$month]['unique_customers'][$customer_id] = true;
+                }
             }
-        }
-        
-        $monthly_data = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                DATE_FORMAT(date_created_gmt, '%%Y-%%m') as month,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(total_amount), 0) as revenue,
-                COALESCE(AVG(total_amount), 0) as average_order_value,
-                COUNT(DISTINCT customer_id) as unique_customers
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE status IN ('wc-completed', 'wc-processing')
-            AND date_created_gmt >= DATE_SUB(NOW(), INTERVAL %d MONTH)
-            $customer_filter
-            GROUP BY DATE_FORMAT(date_created_gmt, '%%Y-%%m')
-            ORDER BY month ASC
-        ", $months_count));
-        
-        // Format data for charts
-        $formatted_data = array();
-        foreach ($monthly_data as $data) {
-            $formatted_data[] = array(
-                'month' => $data->month,
-                'month_name' => date('M Y', strtotime($data->month . '-01')),
-                'orders_count' => (int) $data->orders_count,
-                'revenue' => (float) $data->revenue,
-                'average_order_value' => (float) $data->average_order_value,
-                'unique_customers' => (int) $data->unique_customers
+            
+            // Format data for charts
+            $formatted_data = array();
+            foreach ($monthly_data as $month => $data) {
+                $formatted_data[] = array(
+                    'month' => $month,
+                    'month_name' => date('M Y', strtotime($month . '-01')),
+                    'orders_count' => (int) $data['orders_count'],
+                    'revenue' => (float) $data['revenue'],
+                    'average_order_value' => $data['orders_count'] > 0 ? (float) ($data['revenue'] / $data['orders_count']) : 0,
+                    'unique_customers' => count($data['unique_customers'])
+                );
+            }
+            
+            // Sort by month
+            usort($formatted_data, function($a, $b) {
+                return strcmp($a['month'], $b['month']);
+            });
+            
+            return array(
+                'monthly_data' => $formatted_data
             );
+            
+        } catch (Exception $e) {
+            error_log('Monthly Comparison Error: ' . $e->getMessage());
+            return array('monthly_data' => array());
         }
-        
-        return array(
-            'monthly_data' => $formatted_data
-        );
     }
     
     /**
      * Get sales report by period
      */
     public function get_sales_report($request) {
-        global $wpdb;
-        
-        $period = $request->get_param('period') ?: 'month';
-        $manager_id = $request->get_param('manager_id');
-        
-        $customer_filter = '';
-        if ($manager_id) {
-            $customer_ids = $wpdb->get_col($wpdb->prepare("
-                SELECT customer_id FROM {$wpdb->prefix}customer_account_managers 
-                WHERE manager_id = %d
-            ", $manager_id));
+        try {
+            $period = $request->get_param('period') ?: 'month';
+            $manager_id = $request->get_param('manager_id');
             
-            if (!empty($customer_ids)) {
-                $customer_ids_str = implode(',', array_map('intval', $customer_ids));
-                $customer_filter = "AND o.customer_id IN ($customer_ids_str)";
+            // Get date range
+            $month_start = date('Y-m-01 00:00:00');
+            $month_end = date('Y-m-t 23:59:59');
+            
+            $orders = wc_get_orders(array(
+                'status' => 'any',
+                'date_created' => $month_start . '...' . $month_end,
+                'limit' => -1,
+                'return' => 'objects'
+            ));
+            
+            $sales_by_status = array();
+            $top_customers = array();
+            $daily_sales = array();
+            
+            foreach ($orders as $order) {
+                // Skip if manager filter is set and customer is not assigned
+                if ($manager_id) {
+                    $customer_id = $order->get_customer_id();
+                    if ($customer_id) {
+                        $customer_manager = get_user_meta($customer_id, 'account_manager_id', true);
+                        if ($customer_manager != $manager_id) continue;
+                    }
+                }
+                
+                $status = $order->get_status();
+                $date = $order->get_date_created()->format('Y-m-d');
+                $total = $order->get_total();
+                $customer_id = $order->get_customer_id();
+                
+                // Sales by status
+                if (!isset($sales_by_status[$status])) {
+                    $sales_by_status[$status] = array(
+                        'status' => $status,
+                        'orders_count' => 0,
+                        'revenue' => 0
+                    );
+                }
+                $sales_by_status[$status]['orders_count']++;
+                $sales_by_status[$status]['revenue'] += $total;
+                
+                // Top customers (only for completed/processing orders)
+                if (in_array($status, array('completed', 'processing')) && $customer_id) {
+                    if (!isset($top_customers[$customer_id])) {
+                        $top_customers[$customer_id] = array(
+                            'customer_id' => $customer_id,
+                            'orders_count' => 0,
+                            'total_spent' => 0
+                        );
+                    }
+                    $top_customers[$customer_id]['orders_count']++;
+                    $top_customers[$customer_id]['total_spent'] += $total;
+                }
+                
+                // Daily sales (only for completed/processing orders)
+                if (in_array($status, array('completed', 'processing'))) {
+                    if (!isset($daily_sales[$date])) {
+                        $daily_sales[$date] = array(
+                            'date' => $date,
+                            'orders_count' => 0,
+                            'revenue' => 0
+                        );
+                    }
+                    $daily_sales[$date]['orders_count']++;
+                    $daily_sales[$date]['revenue'] += $total;
+                }
             }
-        }
-        
-        $date_range = $this->get_date_range($period, 'current');
-        
-        // Sales by status
-        $sales_by_status = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                status,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(total_amount), 0) as revenue
-            FROM {$wpdb->prefix}wc_orders o
-            WHERE date_created_gmt >= %s 
-            AND date_created_gmt < %s
-            $customer_filter
-            GROUP BY status
-            ORDER BY revenue DESC
-        ", $date_range['start'], $date_range['end']));
-        
-        // Top customers by revenue
-        $top_customers = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                o.customer_id,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(o.total_amount), 0) as total_spent
-            FROM {$wpdb->prefix}wc_orders o
-            WHERE o.status IN ('wc-completed', 'wc-processing')
-            AND o.date_created_gmt >= %s 
-            AND o.date_created_gmt < %s
-            AND o.customer_id > 0
-            $customer_filter
-            GROUP BY o.customer_id
-            ORDER BY total_spent DESC
-            LIMIT 10
-        ", $date_range['start'], $date_range['end']));
-        
-        // Format top customers with user data
-        $formatted_customers = array();
-        foreach ($top_customers as $customer_data) {
-            $customer = new WC_Customer($customer_data->customer_id);
-            if ($customer->get_id()) {
-                $formatted_customers[] = array(
-                    'customer_id' => $customer_data->customer_id,
-                    'name' => $customer->get_display_name(),
-                    'email' => $customer->get_email(),
-                    'orders_count' => (int) $customer_data->orders_count,
-                    'total_spent' => (float) $customer_data->total_spent
-                );
+            
+            // Sort and format top customers
+            uasort($top_customers, function($a, $b) {
+                return $b['total_spent'] <=> $a['total_spent'];
+            });
+            $top_customers = array_slice($top_customers, 0, 10);
+            
+            $formatted_customers = array();
+            foreach ($top_customers as $customer_data) {
+                $customer = new WC_Customer($customer_data['customer_id']);
+                if ($customer->get_id()) {
+                    $formatted_customers[] = array(
+                        'customer_id' => $customer_data['customer_id'],
+                        'name' => $customer->get_display_name(),
+                        'email' => $customer->get_email(),
+                        'orders_count' => (int) $customer_data['orders_count'],
+                        'total_spent' => (float) $customer_data['total_spent']
+                    );
+                }
             }
+            
+            // Sort daily sales
+            ksort($daily_sales);
+            
+            return array(
+                'sales_by_status' => array_values($sales_by_status),
+                'top_customers' => $formatted_customers,
+                'daily_sales' => array_values($daily_sales),
+                'period' => $period
+            );
+            
+        } catch (Exception $e) {
+            error_log('Sales Report Error: ' . $e->getMessage());
+            return array(
+                'sales_by_status' => array(),
+                'top_customers' => array(),
+                'daily_sales' => array(),
+                'period' => $period
+            );
         }
-        
-        // Daily sales trend
-        $daily_sales = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                DATE(date_created_gmt) as date,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(total_amount), 0) as revenue
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE status IN ('wc-completed', 'wc-processing')
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-            $customer_filter
-            GROUP BY DATE(date_created_gmt)
-            ORDER BY date ASC
-        ", $date_range['start'], $date_range['end']));
-        
-        return array(
-            'sales_by_status' => $sales_by_status,
-            'top_customers' => $formatted_customers,
-            'daily_sales' => $daily_sales,
-            'period' => $period,
-            'date_range' => $date_range
-        );
     }
     
     /**
      * Get top selling products
      */
     public function get_top_products($request) {
-        global $wpdb;
-        
-        $period = $request->get_param('period') ?: 'month';
-        $limit = min($request->get_param('limit') ?: 10, 50);
-        $manager_id = $request->get_param('manager_id');
-        
-        $customer_filter = '';
-        if ($manager_id) {
-            $customer_ids = $wpdb->get_col($wpdb->prepare("
-                SELECT customer_id FROM {$wpdb->prefix}customer_account_managers 
-                WHERE manager_id = %d
-            ", $manager_id));
+        try {
+            $period = $request->get_param('period') ?: 'month';
+            $limit = min($request->get_param('limit') ?: 10, 10); // Limit to max 10 products
             
-            if (!empty($customer_ids)) {
-                $customer_ids_str = implode(',', array_map('intval', $customer_ids));
-                $customer_filter = "AND o.customer_id IN ($customer_ids_str)";
+            // Get orders for current month only (less memory usage)
+            $month_start = date('Y-m-01 00:00:00');
+            $month_end = date('Y-m-t 23:59:59');
+            
+            // Use paginated approach to avoid memory exhaustion
+            $orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $month_start . '...' . $month_end,
+                'limit' => 500, // Process in batches of 500
+                'return' => 'objects',
+                'paginate' => true
+            ));
+            
+            $product_stats = array();
+            $page = 1;
+            
+            do {
+                $orders = wc_get_orders(array(
+                    'status' => array('wc-completed', 'wc-processing'),
+                    'date_created' => $month_start . '...' . $month_end,
+                    'limit' => 500,
+                    'page' => $page,
+                    'return' => 'objects'
+                ));
+                
+                foreach ($orders as $order) {
+                    foreach ($order->get_items() as $item) {
+                        $product_id = $item->get_product_id();
+                        $quantity = $item->get_quantity();
+                        $total = $item->get_total();
+                        
+                        if (!isset($product_stats[$product_id])) {
+                            $product_stats[$product_id] = array(
+                                'product_id' => $product_id,
+                                'total_quantity' => 0,
+                                'total_revenue' => 0,
+                                'orders_count' => 0
+                            );
+                        }
+                        
+                        $product_stats[$product_id]['total_quantity'] += $quantity;
+                        $product_stats[$product_id]['total_revenue'] += $total;
+                        $product_stats[$product_id]['orders_count']++;
+                    }
+                }
+                
+                $page++;
+                
+                // Clear memory after each batch
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+                
+            } while (count($orders) === 500 && $page <= 5); // Max 5 pages (2500 orders)
+            
+            // Sort by revenue and limit
+            uasort($product_stats, function($a, $b) {
+                return $b['total_revenue'] <=> $a['total_revenue'];
+            });
+            
+            $product_stats = array_slice($product_stats, 0, $limit);
+            
+            // Format with product data
+            $formatted_products = array();
+            foreach ($product_stats as $product_data) {
+                $product = wc_get_product($product_data['product_id']);
+                if ($product) {
+                    $formatted_products[] = array(
+                        'product_id' => $product_data['product_id'],
+                        'name' => $product->get_name(),
+                        'sku' => $product->get_sku(),
+                        'price' => $product->get_price(),
+                        'total_quantity' => (int) $product_data['total_quantity'],
+                        'total_revenue' => (float) $product_data['total_revenue'],
+                        'orders_count' => (int) $product_data['orders_count'],
+                        'image_url' => wp_get_attachment_url($product->get_image_id())
+                    );
+                }
             }
+            
+            return array(
+                'top_products' => $formatted_products,
+                'period' => $period
+            );
+            
+        } catch (Exception $e) {
+            error_log('Top Products Error: ' . $e->getMessage());
+            return array(
+                'top_products' => array(),
+                'period' => $period
+            );
         }
-        
-        $date_range = $this->get_date_range($period, 'current');
-        
-        $top_products = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                oi.product_id,
-                SUM(oi.quantity) as total_quantity,
-                SUM(oi.total) as total_revenue,
-                COUNT(DISTINCT o.id) as orders_count
-            FROM {$wpdb->prefix}woocommerce_order_items oi
-            INNER JOIN {$wpdb->prefix}wc_orders o ON oi.order_id = o.id
-            WHERE o.status IN ('wc-completed', 'wc-processing')
-            AND o.date_created_gmt >= %s 
-            AND o.date_created_gmt < %s
-            AND oi.order_item_type = 'line_item'
-            $customer_filter
-            GROUP BY oi.product_id
-            ORDER BY total_revenue DESC
-            LIMIT %d
-        ", $date_range['start'], $date_range['end'], $limit));
-        
-        // Format with product data
-        $formatted_products = array();
-        foreach ($top_products as $product_data) {
-            $product = wc_get_product($product_data->product_id);
-            if ($product) {
-                $formatted_products[] = array(
-                    'product_id' => $product_data->product_id,
-                    'name' => $product->get_name(),
-                    'sku' => $product->get_sku(),
-                    'price' => $product->get_price(),
-                    'total_quantity' => (int) $product_data->total_quantity,
-                    'total_revenue' => (float) $product_data->total_revenue,
-                    'orders_count' => (int) $product_data->orders_count,
-                    'image_url' => wp_get_attachment_url($product->get_image_id())
-                );
-            }
-        }
-        
-        return array(
-            'top_products' => $formatted_products,
-            'period' => $period
-        );
     }
     
     /**
      * Get account manager analytics
      */
     public function get_manager_analytics($request) {
-        global $wpdb;
-        
-        $manager_id = $request['id'];
-        $period = $request->get_param('period') ?: 'month';
-        
-        // Get customers assigned to this manager
-        $customer_ids = $wpdb->get_col($wpdb->prepare("
-            SELECT customer_id FROM {$wpdb->prefix}customer_account_managers 
-            WHERE manager_id = %d
-        ", $manager_id));
-        
-        if (empty($customer_ids)) {
+        try {
+            $manager_id = $request['id'];
+            $period = $request->get_param('period') ?: 'month';
+            
+            // Get customers assigned to this manager
+            $customers = get_users(array(
+                'meta_key' => 'account_manager_id',
+                'meta_value' => $manager_id,
+                'fields' => 'ID'
+            ));
+            
+            if (empty($customers)) {
+                return array(
+                    'customers_count' => 0,
+                    'total_revenue' => 0,
+                    'total_orders' => 0,
+                    'average_order_value' => 0,
+                    'top_customers' => array(),
+                    'monthly_performance' => array()
+                );
+            }
+            
+            // Get date range
+            $month_start = date('Y-m-01 00:00:00');
+            $month_end = date('Y-m-t 23:59:59');
+            
+            $orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $month_start . '...' . $month_end,
+                'customer' => $customers,
+                'limit' => -1,
+                'return' => 'objects'
+            ));
+            
+            $total_revenue = 0;
+            $total_orders = count($orders);
+            $customer_stats = array();
+            $monthly_performance = array();
+            
+            foreach ($orders as $order) {
+                $total_revenue += $order->get_total();
+                $customer_id = $order->get_customer_id();
+                $month = $order->get_date_created()->format('Y-m');
+                
+                // Customer stats
+                if ($customer_id) {
+                    if (!isset($customer_stats[$customer_id])) {
+                        $customer_stats[$customer_id] = array(
+                            'customer_id' => $customer_id,
+                            'orders_count' => 0,
+                            'total_spent' => 0
+                        );
+                    }
+                    $customer_stats[$customer_id]['orders_count']++;
+                    $customer_stats[$customer_id]['total_spent'] += $order->get_total();
+                }
+                
+                // Monthly performance
+                if (!isset($monthly_performance[$month])) {
+                    $monthly_performance[$month] = array(
+                        'month' => $month,
+                        'orders_count' => 0,
+                        'revenue' => 0
+                    );
+                }
+                $monthly_performance[$month]['orders_count']++;
+                $monthly_performance[$month]['revenue'] += $order->get_total();
+            }
+            
+            // Top customers
+            uasort($customer_stats, function($a, $b) {
+                return $b['total_spent'] <=> $a['total_spent'];
+            });
+            $top_customers = array_slice($customer_stats, 0, 5);
+            
+            $formatted_top_customers = array();
+            foreach ($top_customers as $customer_data) {
+                $customer = new WC_Customer($customer_data['customer_id']);
+                if ($customer->get_id()) {
+                    $formatted_top_customers[] = array(
+                        'customer_id' => $customer_data['customer_id'],
+                        'name' => $customer->get_display_name(),
+                        'email' => $customer->get_email(),
+                        'orders_count' => (int) $customer_data['orders_count'],
+                        'total_spent' => (float) $customer_data['total_spent']
+                    );
+                }
+            }
+            
+            // Sort monthly performance
+            ksort($monthly_performance);
+            
+            return array(
+                'manager_id' => (int) $manager_id,
+                'customers_count' => count($customers),
+                'total_revenue' => (float) $total_revenue,
+                'total_orders' => (int) $total_orders,
+                'average_order_value' => $total_orders > 0 ? (float) ($total_revenue / $total_orders) : 0,
+                'top_customers' => $formatted_top_customers,
+                'monthly_performance' => array_values($monthly_performance),
+                'period' => $period
+            );
+            
+        } catch (Exception $e) {
+            error_log('Manager Analytics Error: ' . $e->getMessage());
             return array(
                 'customers_count' => 0,
                 'total_revenue' => 0,
@@ -410,78 +575,6 @@ class Sales_Dashboard_Analytics {
                 'monthly_performance' => array()
             );
         }
-        
-        $customer_ids_str = implode(',', array_map('intval', $customer_ids));
-        $date_range = $this->get_date_range($period, 'current');
-        
-        // Manager performance stats
-        $performance_stats = $wpdb->get_row($wpdb->prepare("
-            SELECT 
-                COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_revenue,
-                COALESCE(AVG(total_amount), 0) as average_order_value
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE status IN ('wc-completed', 'wc-processing')
-            AND customer_id IN ($customer_ids_str)
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-        ", $date_range['start'], $date_range['end']));
-        
-        // Top customers for this manager
-        $top_customers = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                customer_id,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(total_amount), 0) as total_spent
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE status IN ('wc-completed', 'wc-processing')
-            AND customer_id IN ($customer_ids_str)
-            AND date_created_gmt >= %s 
-            AND date_created_gmt < %s
-            GROUP BY customer_id
-            ORDER BY total_spent DESC
-            LIMIT 5
-        ", $date_range['start'], $date_range['end']));
-        
-        // Format top customers
-        $formatted_top_customers = array();
-        foreach ($top_customers as $customer_data) {
-            $customer = new WC_Customer($customer_data->customer_id);
-            if ($customer->get_id()) {
-                $formatted_top_customers[] = array(
-                    'customer_id' => $customer_data->customer_id,
-                    'name' => $customer->get_display_name(),
-                    'email' => $customer->get_email(),
-                    'orders_count' => (int) $customer_data->orders_count,
-                    'total_spent' => (float) $customer_data->total_spent
-                );
-            }
-        }
-        
-        // Monthly performance for the last 12 months
-        $monthly_performance = $wpdb->get_results("
-            SELECT 
-                DATE_FORMAT(date_created_gmt, '%Y-%m') as month,
-                COUNT(*) as orders_count,
-                COALESCE(SUM(total_amount), 0) as revenue
-            FROM {$wpdb->prefix}wc_orders 
-            WHERE status IN ('wc-completed', 'wc-processing')
-            AND customer_id IN ($customer_ids_str)
-            AND date_created_gmt >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-            GROUP BY DATE_FORMAT(date_created_gmt, '%Y-%m')
-            ORDER BY month ASC
-        ");
-        
-        return array(
-            'manager_id' => (int) $manager_id,
-            'customers_count' => count($customer_ids),
-            'total_revenue' => (float) $performance_stats->total_revenue,
-            'total_orders' => (int) $performance_stats->total_orders,
-            'average_order_value' => (float) $performance_stats->average_order_value,
-            'top_customers' => $formatted_top_customers,
-            'monthly_performance' => $monthly_performance,
-            'period' => $period
-        );
     }
     
     /**
@@ -538,6 +631,160 @@ class Sales_Dashboard_Analytics {
                     'start' => date('Y-m-01 00:00:00'),
                     'end' => date('Y-m-t 23:59:59')
                 );
+        }
+    }
+    
+    /**
+     * Get monthly revenue data
+     */
+    public function get_monthly_revenue($request) {
+        try {
+            $months = intval($request->get_param('months') ?: 12);
+            
+            // Use WC_Order_Query for better compatibility
+            $results = array();
+            
+            for ($i = 0; $i < $months; $i++) {
+                $month_start = date('Y-m-01 00:00:00', strtotime("-$i months"));
+                $month_end = date('Y-m-t 23:59:59', strtotime("-$i months"));
+                $month_key = date('Y-m', strtotime("-$i months"));
+                
+                $orders = wc_get_orders(array(
+                    'status' => array('wc-completed', 'wc-processing'),
+                    'date_created' => $month_start . '...' . $month_end,
+                    'limit' => -1,
+                    'return' => 'objects'
+                ));
+                
+                $revenue = 0;
+                foreach ($orders as $order) {
+                    $revenue += $order->get_total();
+                }
+                
+                $results[] = array(
+                    'month' => $month_key,
+                    'revenue' => $revenue
+                );
+            }
+            
+            // Reverse to get chronological order
+            $results = array_reverse($results);
+            
+            return rest_ensure_response(array('data' => $results));
+            
+        } catch (Exception $e) {
+            error_log('Monthly Revenue Error: ' . $e->getMessage());
+            return rest_ensure_response(array('data' => array()));
+        }
+    }
+    
+    /**
+     * Get sales comparison data  
+     */
+    public function get_sales_comparison($request) {
+        try {
+            $current_month_start = date('Y-m-01 00:00:00');
+            $current_month_end = date('Y-m-t 23:59:59');
+            $last_month_start = date('Y-m-01 00:00:00', strtotime('-1 month'));
+            $last_month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
+            
+            // Get current month orders
+            $current_orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $current_month_start . '...' . $current_month_end,
+                'limit' => -1,
+                'return' => 'objects'
+            ));
+            
+            $current_month_sales = 0;
+            foreach ($current_orders as $order) {
+                $current_month_sales += $order->get_total();
+            }
+            
+            // Get last month orders
+            $last_orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $last_month_start . '...' . $last_month_end,
+                'limit' => -1,
+                'return' => 'objects'
+            ));
+            
+            $last_month_sales = 0;
+            foreach ($last_orders as $order) {
+                $last_month_sales += $order->get_total();
+            }
+            
+            $growth = $last_month_sales > 0 ? 
+                (($current_month_sales - $last_month_sales) / $last_month_sales) * 100 : 0;
+            
+            return rest_ensure_response(array(
+                'current' => floatval($current_month_sales),
+                'previous' => floatval($last_month_sales),
+                'growth' => round($growth, 2)
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Sales Comparison Error: ' . $e->getMessage());
+            return rest_ensure_response(array(
+                'current' => 0,
+                'previous' => 0,
+                'growth' => 0
+            ));
+        }
+    }
+    
+    /**
+     * Get manager performance data
+     */
+    public function get_manager_performance($request) {
+        try {
+            $results = array();
+            
+            // Date range for last month
+            $month_start = date('Y-m-01 00:00:00', strtotime('-1 month'));
+            $month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
+            
+            foreach ($this->managers as $manager_id => $manager_name) {
+                // Get customers for this manager (simplified - assuming user meta)
+                $customers = get_users(array(
+                    'meta_key' => '_account_manager_id',
+                    'meta_value' => $manager_id,
+                    'fields' => 'ID'
+                ));
+                
+                $orders_count = 0;
+                $revenue = 0;
+                
+                if (!empty($customers)) {
+                    $customer_ids = array_map('intval', $customers);
+                    
+                    $orders = wc_get_orders(array(
+                        'status' => array('wc-completed', 'wc-processing'),
+                        'date_created' => $month_start . '...' . $month_end,
+                        'customer' => $customer_ids,
+                        'limit' => -1,
+                        'return' => 'objects'
+                    ));
+                    
+                    $orders_count = count($orders);
+                    foreach ($orders as $order) {
+                        $revenue += $order->get_total();
+                    }
+                }
+                
+                $results[] = array(
+                    'manager_id' => $manager_id,
+                    'manager_name' => $manager_name,
+                    'orders_count' => $orders_count,
+                    'revenue' => $revenue
+                );
+            }
+            
+            return rest_ensure_response(array('data' => $results));
+            
+        } catch (Exception $e) {
+            error_log('Manager Performance Error: ' . $e->getMessage());
+            return rest_ensure_response(array('data' => array()));
         }
     }
     

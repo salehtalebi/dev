@@ -1,6 +1,6 @@
-import { ref, computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { API_CONFIG } from '@/config/api'
+import { useAuthStore } from '@/stores/auth'
+import { computed, ref } from 'vue'
 
 /**
  * Base API composable
@@ -13,9 +13,9 @@ export function useAPI() {
     error.value = null
   }
 
-  const makeRequest = async (url, options = {}) {
+  const makeRequest = async (url, options = {}) => {
     const authStore = useAuthStore()
-    
+
     const config = {
       method: 'GET',
       headers: {
@@ -34,19 +34,19 @@ export function useAPI() {
     }
 
     const response = await fetch(`${API_CONFIG.BASE_URL}${url}`, config)
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       throw new Error(errorData.message || `HTTP ${response.status}`)
     }
-    
+
     return response.json()
   }
 
   const handleRequest = async (requestFn) => {
     loading.value = true
     error.value = null
-    
+
     try {
       const result = await requestFn()
       return result
@@ -100,17 +100,17 @@ export function useAPI() {
     error: computed(() => error.value),
     clearError,
     handleRequest,
-    
+
     // Orders
     getOrders,
     getOrder,
     updateOrder,
-    
+
     // Customers
     getCustomers,
     getCustomer,
     getCustomerStatistics,
-    
+
     // Analytics
     getAnalytics,
   }
@@ -148,20 +148,20 @@ export function useAuth() {
 export function useFormatters() {
   const formatPrice = (price, currency = 'تومان') => {
     if (!price) return '0'
-    
+
     const formatted = new Intl.NumberFormat('fa-IR').format(price)
     return `${formatted} ${currency}`
   }
 
   const formatDate = (date, options = {}) => {
     if (!date) return ''
-    
+
     const defaultOptions = {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     }
-    
+
     return new Intl.DateTimeFormat('fa-IR', { ...defaultOptions, ...options }).format(new Date(date))
   }
 
@@ -175,7 +175,7 @@ export function useFormatters() {
       'refunded': 'بازگشت داده شده',
       'failed': 'ناموفق',
     }
-    
+
     return statusMap[status] || status
   }
 

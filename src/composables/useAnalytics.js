@@ -1,0 +1,189 @@
+/**
+ * Analytics Composable for Dashboard Components
+ */
+import { useDashboardStore } from '@/stores/dashboard'
+import { computed, onMounted, ref } from 'vue'
+
+// Global state to prevent multiple fetches
+let isInitialized = false
+let isCurrentlyFetching = false
+
+export function useAnalytics() {
+    const dashboardStore = useDashboardStore()
+    const loading = ref(false)
+    const error = ref(null)
+
+    // Computed properties for dashboard data
+    const dashboardStats = computed(() => dashboardStore.stats)
+    const monthlyRevenue = computed(() => dashboardStore.monthlyRevenue)
+    const topProducts = computed(() => dashboardStore.topProducts)
+    const salesComparison = computed(() => dashboardStore.salesComparison)
+    const managerPerformance = computed(() => dashboardStore.managerPerformance)
+    const recentOrders = computed(() => dashboardStore.recentOrders)
+
+    // Chart data formatters
+    const getRevenueChartData = computed(() => {
+        if (!monthlyRevenue.value || monthlyRevenue.value.length === 0) {
+            return {
+                categories: [],
+                series: [{
+                    name: 'درآمد ماهانه',
+                    data: []
+                }]
+            }
+        }
+
+        const categories = monthlyRevenue.value.map(item => {
+            const date = new Date(item.month + '-01')
+            return date.toLocaleDateString('fa-IR', {
+                year: 'numeric',
+                month: 'short'
+            })
+        })
+
+        const data = monthlyRevenue.value.map(item =>
+            parseFloat(item.revenue || 0)
+        )
+
+        return {
+            categories,
+            series: [{
+                name: 'درآمد ماهانه',
+                data
+            }]
+        }
+    })
+
+    const getTopProductsChartData = computed(() => {
+        if (!topProducts.value || topProducts.value.length === 0) {
+            return {
+                labels: [],
+                series: []
+            }
+        }
+
+        const labels = topProducts.value.map(product =>
+            product.product_name || `محصول ${product.product_id}`
+        )
+        const series = topProducts.value.map(product =>
+            parseInt(product.total_sold || 0)
+        )
+
+        return { labels, series }
+    })
+
+    const getSalesComparisonData = computed(() => {
+        const current = parseFloat(salesComparison.value.currentMonth || 0)
+        const previous = parseFloat(salesComparison.value.previousMonth || 0)
+        const growth = parseFloat(salesComparison.value.growth || 0)
+
+        return {
+            current,
+            previous,
+            growth,
+            series: [current, previous]
+        }
+    })
+
+    const getManagerPerformanceData = computed(() => {
+        if (!managerPerformance.value || managerPerformance.value.length === 0) {
+            return {
+                categories: [],
+                series: [{
+                    name: 'تعداد سفارشات',
+                    data: []
+                }, {
+                    name: 'درآمد',
+                    data: []
+                }]
+            }
+        }
+
+        const categories = managerPerformance.value.map(manager =>
+            manager.manager_name
+        )
+        const ordersData = managerPerformance.value.map(manager =>
+            parseInt(manager.orders_count || 0)
+        )
+        const revenueData = managerPerformance.value.map(manager =>
+            parseFloat(manager.revenue || 0)
+        )
+
+        return {
+            categories,
+            series: [{
+                name: 'تعداد سفارشات',
+                data: ordersData
+            }, {
+                name: 'درآمد',
+                data: revenueData
+            }]
+        }
+    })
+
+    // Methods
+    const fetchDashboardData = async (force = false) => {
+        // اگه در حال fetch کردن هست، منتظر می‌مونیم
+        if (isCurrentlyFetching && !force) {
+            return
+        }
+
+        // اگه قبلا initialize شده و force نیست، fetch نمی‌کنیم
+        if (isInitialized && !force) {
+            return
+        }
+
+        isCurrentlyFetching = true
+        loading.value = true
+        error.value = null
+
+        try {
+            console.log('Fetching dashboard data...', { force, isInitialized })
+            await dashboardStore.fetchAllDashboardData(force)
+            console.log('Dashboard data fetched successfully')
+            isInitialized = true
+        } catch (err) {
+            console.error('Error fetching dashboard data:', err)
+            error.value = err.message || 'خطا در دریافت داده‌های داشبورد'
+        } finally {
+            loading.value = false
+            isCurrentlyFetching = false
+        }
+    }
+
+    const refreshData = () => {
+        isInitialized = false // Reset برای force fetch
+        return fetchDashboardData(true)
+    }
+
+    // Auto fetch on mount فقط اگه initialize نشده باشه
+    onMounted(() => {
+        if (!isInitialized && !isCurrentlyFetching) {
+            fetchDashboardData()
+        }
+    })
+
+    return {
+        // State
+        loading,
+        error,
+
+        // Dashboard stats
+        dashboardStats,
+        monthlyRevenue,
+        topProducts,
+        salesComparison,
+        managerPerformance,
+        recentOrders,
+
+        // Chart data
+        getRevenueChartData,
+        getTopProductsChartData,
+        getSalesComparisonData,
+        getManagerPerformanceData,
+
+        // Methods
+        fetchDashboardData,
+        refreshData
+    }
+}

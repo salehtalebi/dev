@@ -53,18 +53,21 @@ class SalesDashboardPlugin {
      * Load plugin dependencies
      */
     private function load_dependencies() {
+        // Load Memory Manager first
+        require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-memory-manager.php';
+        
+        // Load other classes
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-jwt-auth.php';
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-api-routes.php';
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-analytics.php';
-        require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-account-managers.php';
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-export.php';
+        require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-account-managers.php';
         
+        // Load admin class if in admin area
         if (is_admin()) {
             require_once SALES_DASHBOARD_PLUGIN_DIR . 'admin/class-admin.php';
         }
-    }
-    
-    /**
+    }    /**
      * Initialize the plugin
      */
     public function init() {
@@ -104,7 +107,9 @@ class SalesDashboardPlugin {
             'https://sales.academy.com',
             'http://localhost:5173',
             'http://localhost:3000',
-            'http://localhost:8080'
+            'http://localhost:8080',
+            'http://localhost:2145',
+            'http://localhost:2145/nuvior'
         ));
     }
     
@@ -149,7 +154,9 @@ class SalesDashboardPlugin {
             'https://sales.academy.com',
             'http://localhost:5173',
             'http://localhost:3000',
-            'http://localhost:8080'
+            'http://localhost:8080',
+            'http://localhost:2145',
+            'http://localhost:2145/nuvior',
         ));
         
         $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';

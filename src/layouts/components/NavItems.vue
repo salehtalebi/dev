@@ -1,7 +1,5 @@
 <script setup>
-import VerticalNavSectionTitle from '@/@layouts/components/VerticalNavSectionTitle.vue'
-import VerticalNavGroup from '@layouts/components/VerticalNavGroup.vue'
-import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
+import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
 </script>
 
 <template>
@@ -11,6 +9,15 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
       title: 'Main Dashboard',
       icon: 'nu-dashboard',
       to: '/dashboard',
+    }"
+  />
+
+  <!-- New Dashboard -->
+  <VerticalNavLink
+    :item="{
+      title: 'Dashboard New',
+      icon: 'bx-bar-chart-alt-2',
+      to: '/dashboard-new',
     }"
   />
 

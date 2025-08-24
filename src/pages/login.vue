@@ -49,8 +49,10 @@ const handleLogin = async () => {
       // Check if user has admin role
       if (authStore.isAdmin) {
         console.log('Admin user detected, redirecting to dashboard')
-        // Use replace instead of push to prevent back button issues
-        await router.replace('/dashboard')
+        // Use setTimeout to ensure all reactive updates are complete
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 100)
       } else {
         console.log('User role not sufficient:', authStore.user?.roles)
         errorMessage.value = 'شما مجوز دسترسی به این پنل را ندارید'

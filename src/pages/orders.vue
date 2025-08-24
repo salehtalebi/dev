@@ -13,7 +13,7 @@
               <VCol cols="12" md="6" class="text-end">
                 <VBtn
                   color="primary"
-                  :loading="isExporting"
+                  :loading="exportLoading"
                   @click="exportOrders"
                 >
                   <VIcon start icon="bx-download" />
@@ -33,7 +33,15 @@
           <VCardTitle>فیلترها</VCardTitle>
           <VCardText>
             <VRow>
-              <VCol cols="12" md="3">
+              <VCol cols="12" md="2">
+                <VTextField
+                  v-model="localFilters.search"
+                  label="جستجو"
+                  prepend-inner-icon="bx-search"
+                  clearable
+                />
+              </VCol>
+              <VCol cols="12" md="2">
                 <VSelect
                   v-model="localFilters.status"
                   :items="orderStatuses"
@@ -43,59 +51,74 @@
                   clearable
                 />
               </VCol>
-              <VCol cols="12" md="3">
-                <VTextField
-                  v-model="localFilters.search"
-                  label="جستجو (شماره سفارش، نام مشتری)"
-                  prepend-inner-icon="bx-search"
+              <VCol cols="12" md="2">
+                <VSelect
+                  v-model="localFilters.accountManager"
+                  :items="accountManagers"
+                  item-title="text"
+                  item-value="value"
+                  label="اکانت منیجر"
                   clearable
                 />
               </VCol>
-              <VCol cols="12" md="3">
+              <VCol cols="12" md="2">
+                <VSelect
+                  v-model="localFilters.dateRange"
+                  :items="dateRanges"
+                  item-title="text"
+                  item-value="value"
+                  label="بازه زمانی"
+                  clearable
+                />
+              </VCol>
+              <VCol cols="12" md="2">
+                <VTextField
+                  v-model="localFilters.min_amount"
+                  label="حداقل مبلغ"
+                  type="number"
+                  suffix="تومان"
+                />
+              </VCol>
+              <VCol cols="12" md="2" class="d-flex align-center gap-2">
+                <VBtn
+                  color="primary"
+                  @click="applyFilters"
+                >
+                  اعمال
+                </VBtn>
+                <VBtn
+                  color="secondary"
+                  variant="outlined"
+                  @click="clearFilters"
+                >
+                  پاک
+                </VBtn>
+              </VCol>
+            </VRow>
+            
+            <!-- Custom Date Range & Max Amount -->
+            <VRow v-if="localFilters.dateRange === 'custom' || localFilters.min_amount">
+              <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_from"
                   label="از تاریخ"
                   type="date"
                 />
               </VCol>
-              <VCol cols="12" md="3">
+              <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_to"
                   label="تا تاریخ"
                   type="date"
                 />
               </VCol>
-            </VRow>
-            <VRow>
-              <VCol cols="12" md="3">
-                <VTextField
-                  v-model="localFilters.min_amount"
-                  label="حداقل مبلغ"
-                  type="number"
-                  prefix="$"
-                />
-              </VCol>
-              <VCol cols="12" md="3">
+              <VCol v-if="localFilters.min_amount" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.max_amount"
                   label="حداکثر مبلغ"
                   type="number"
-                  prefix="$"
+                  suffix="تومان"
                 />
-              </VCol>
-              <VCol cols="12" md="6" class="d-flex align-center gap-4">
-                <VBtn
-                  color="primary"
-                  @click="applyFilters"
-                >
-                  اعمال فیلتر
-                </VBtn>
-                <VBtn
-                  variant="outlined"
-                  @click="clearFilters"
-                >
-                  پاک کردن
-                </VBtn>
               </VCol>
             </VRow>
           </VCardText>
@@ -204,6 +227,7 @@
 </template>
 
 <script setup>
+import { useExport } from '@/composables/useExport'
 import { useOrdersStore } from '@/stores/orders'
 import { format } from 'date-fns'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -211,17 +235,66 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const ordersStore = useOrdersStore()
+const { exportOrders: exportOrdersToFile, isExporting: exportLoading, error: exportError } = useExport()
 
 // Local state
-const isExporting = ref(false)
 const localFilters = ref({
   status: '',
   search: '',
+  accountManager: '',
+  dateRange: '',
   date_from: '',
   date_to: '',
   min_amount: '',
   max_amount: ''
 })
+
+// Data
+const accountManagers = [
+  { text: 'همه', value: '' },
+  { text: 'House', value: 'house' },
+  { text: 'Ina Istok', value: '1465' },
+  { text: 'Pina Lee', value: '845' },
+  { text: 'Vidika Shenton', value: '1886' },
+  { text: 'Sarah Hearn', value: '2532' },
+  { text: 'Jonathon Regan', value: '2533' }
+]
+
+const dateRanges = [
+  { text: 'همه', value: '' },
+  { text: 'این هفته', value: 'this_week' },
+  { text: 'این ماه', value: 'this_month' },
+  { text: 'ماه گذشته', value: 'last_month' },
+  { text: 'سال گذشته', value: 'last_year' },
+  { text: 'بازه دلخواه', value: 'custom' }
+]
+
+// Pagination
+const itemsPerPage = ref(20)
+const totalOrders = computed(() => ordersStore.totalOrders || 0)
+const itemsPerPageOptions = [
+  { value: 10, title: '10' },
+  { value: 20, title: '20' },
+  { value: 50, title: '50' },
+  { value: 100, title: '100' }
+]
+
+const pageText = computed(() => {
+  if (totalOrders.value === 0) return 'هیچ آیتمی یافت نشد'
+  
+  const start = (currentPage.value - 1) * itemsPerPage.value + 1
+  const end = Math.min(currentPage.value * itemsPerPage.value, totalOrders.value)
+  
+  return `${start}-${end} از ${totalOrders.value}`
+})
+
+const updateOptions = (options) => {
+  currentPage.value = options.page
+  itemsPerPage.value = options.itemsPerPage
+  ordersStore.setPage(options.page)
+  ordersStore.setItemsPerPage(options.itemsPerPage)
+  fetchOrders()
+}
 
 // Computed
 const orders = computed(() => ordersStore.orders)
@@ -249,7 +322,35 @@ const fetchOrders = () => {
 }
 
 const applyFilters = () => {
-  ordersStore.setFilters(localFilters.value)
+  // Handle date range presets
+  const today = new Date()
+  const filters = { ...localFilters.value }
+  
+  if (localFilters.value.dateRange && localFilters.value.dateRange !== 'custom') {
+    switch (localFilters.value.dateRange) {
+      case 'this_week':
+        const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
+        filters.date_from = startOfWeek.toISOString().split('T')[0]
+        filters.date_to = new Date().toISOString().split('T')[0]
+        break
+      case 'this_month':
+        filters.date_from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
+        filters.date_to = new Date().toISOString().split('T')[0]
+        break
+      case 'last_month':
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+        filters.date_from = lastMonth.toISOString().split('T')[0]
+        filters.date_to = lastMonthEnd.toISOString().split('T')[0]
+        break
+      case 'last_year':
+        filters.date_from = new Date(today.getFullYear() - 1, 0, 1).toISOString().split('T')[0]
+        filters.date_to = new Date(today.getFullYear() - 1, 11, 31).toISOString().split('T')[0]
+        break
+    }
+  }
+  
+  ordersStore.setFilters(filters)
   fetchOrders()
 }
 
@@ -257,6 +358,8 @@ const clearFilters = () => {
   localFilters.value = {
     status: '',
     search: '',
+    accountManager: '',
+    dateRange: '',
     date_from: '',
     date_to: '',
     min_amount: '',
@@ -285,14 +388,46 @@ const formatDate = (dateString) => {
 }
 
 const exportOrders = async () => {
-  isExporting.value = true
   try {
-    // Implementation for Excel export
-    console.log('Exporting orders...')
+    // Get current filters for export
+    const exportFilters = { ...localFilters.value }
+    
+    // Handle date range presets for export
+    const today = new Date()
+    if (localFilters.value.dateRange && localFilters.value.dateRange !== 'custom') {
+      switch (localFilters.value.dateRange) {
+        case 'this_week':
+          const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
+          exportFilters.date_from = startOfWeek.toISOString().split('T')[0]
+          exportFilters.date_to = new Date().toISOString().split('T')[0]
+          break
+        case 'this_month':
+          exportFilters.date_from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
+          exportFilters.date_to = new Date().toISOString().split('T')[0]
+          break
+        case 'last_month':
+          const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+          const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+          exportFilters.date_from = lastMonth.toISOString().split('T')[0]
+          exportFilters.date_to = lastMonthEnd.toISOString().split('T')[0]
+          break
+        case 'last_year':
+          exportFilters.date_from = new Date(today.getFullYear() - 1, 0, 1).toISOString().split('T')[0]
+          exportFilters.date_to = new Date(today.getFullYear() - 1, 11, 31).toISOString().split('T')[0]
+          break
+      }
+    }
+    
+    const result = await exportOrdersToFile(exportFilters)
+    if (result.success) {
+      // Show success message (you can add a toast notification here)
+      console.log('Orders exported successfully')
+    } else {
+      // Show error message
+      console.error('Export failed:', result.message)
+    }
   } catch (error) {
     console.error('Export error:', error)
-  } finally {
-    isExporting.value = false
   }
 }
 

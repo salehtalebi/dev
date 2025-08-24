@@ -10,7 +10,7 @@ class SalesDashboardAPI {
   constructor() {
     this.apiClient = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 10000,
+      timeout: 30000, // افزایش به 30 ثانیه
       headers: {
         'Content-Type': 'application/json',
       }
@@ -24,6 +24,10 @@ class SalesDashboardAPI {
           config.headers.Authorization = `Bearer ${token}`
         }
         return config
+      },
+      (error) => {
+        console.error('Request interceptor error:', error)
+        return Promise.reject(error)
       }
     )
 
@@ -32,6 +36,17 @@ class SalesDashboardAPI {
       (response) => response.data,
       (error) => {
         console.error('API Error:', error)
+
+        // بررسی نوع خطا
+        if (error.code === 'ECONNABORTED') {
+          console.error('Request timeout')
+          error.message = 'درخواست بیش از حد طولانی بود'
+        } else if (error.response?.status === 500) {
+          error.message = 'خطای داخلی سرور'
+        } else if (!error.response) {
+          error.message = 'عدم دسترسی به سرور'
+        }
+
         return Promise.reject(error)
       }
     )
@@ -52,11 +67,29 @@ class SalesDashboardAPI {
       config.data = options.body
     }
 
-    try {
-      const response = await this.apiClient(config)
-      return response
-    } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || 'خطا در برقراری ارتباط با سرور')
+    // retry mechanism برای درخواست‌های ناموفق
+    const maxRetries = 2
+    let retries = 0
+
+    while (retries <= maxRetries) {
+      try {
+        const response = await this.apiClient(config)
+        return response
+      } catch (error) {
+        retries++
+
+        // اگه خطای timeout یا network error باشه و تعداد تلاش کافی نباشه
+        if (retries <= maxRetries &&
+          (error.code === 'ECONNABORTED' ||
+            error.code === 'ERR_NETWORK' ||
+            !error.response)) {
+          console.warn(`Retry ${retries}/${maxRetries} for ${endpoint}`)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retries)) // تاخیر تصاعدی
+          continue
+        }
+
+        throw new Error(error.response?.data?.message || error.message || 'خطا در برقراری ارتباط با سرور')
+      }
     }
   }
 
@@ -74,34 +107,65 @@ class SalesDashboardAPI {
     })
   }
 
-  // Orders methods
+  // Orders methods - Updated to use sales-dashboard API  
   async getOrders(params = {}) {
-    return await this.request(WC_API_ENDPOINT + '/orders', { params })
+    return await this.request(`${CUSTOM_API_ENDPOINT}/wc/orders`, { params })
   }
 
   async getOrder(orderId) {
-    return await this.request(`${WC_API_ENDPOINT}/orders/${orderId}`)
+    return await this.request(`${CUSTOM_API_ENDPOINT}/wc/orders/${orderId}`)
   }
 
   async updateOrder(orderId, data) {
-    return await this.request(`${WC_API_ENDPOINT}/orders/${orderId}`, {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/wc/orders/${orderId}/status`, {
       method: 'PUT',
       body: data
     })
   }
 
-  // Customers methods
+  // Customers methods - Updated to use sales-dashboard API
   async getCustomers(params = {}) {
-    return await this.request(WC_API_ENDPOINT + '/customers', { params })
+    return await this.request(`${CUSTOM_API_ENDPOINT}/wc/customers`, { params })
   }
 
   async getCustomer(customerId) {
-    return await this.request(`${WC_API_ENDPOINT}/customers/${customerId}`)
+    return await this.request(`${CUSTOM_API_ENDPOINT}/wc/customers/${customerId}`)
   }
 
-  // Analytics methods
+  // Analytics methods - Using class-analytics.php endpoints
   async getAnalytics(params = {}) {
     return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/dashboard`, { params })
+  }
+
+  async getTopProducts(params = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/top-products`, { params })
+  }
+
+  async getMonthlyRevenue(params = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/monthly-revenue`, { params })
+  }
+
+  async getSalesComparison(params = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/sales-comparison`, { params })
+  }
+
+  async getManagerPerformance(params = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/analytics/manager-performance`, { params })
+  }
+
+  // Export methods - Using class-export.php endpoints (POST requests)
+  async exportOrders(filters = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/export/orders`, {
+      method: 'POST',
+      body: filters
+    })
+  }
+
+  async exportCustomers(filters = {}) {
+    return await this.request(`${CUSTOM_API_ENDPOINT}/export/customers`, {
+      method: 'POST',
+      body: filters
+    })
   }
 }
 

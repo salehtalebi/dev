@@ -63,9 +63,10 @@ export const useDashboardStore = defineStore('dashboard', {
       this.error = null
 
       try {
+        console.log('Fetching dashboard stats...')
         const params = this.buildAPIParams()
         const stats = await salesDashboardAPI.getAnalytics(params)
-        
+
         this.stats = {
           totalOrders: stats.total_orders || 0,
           totalRevenue: stats.total_revenue || 0,
@@ -75,6 +76,7 @@ export const useDashboardStore = defineStore('dashboard', {
           customersGrowth: stats.customers_growth || 0,
           ordersGrowth: stats.orders_growth || 0,
         }
+        console.log('Dashboard stats fetched successfully')
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch dashboard stats:', error)
@@ -93,7 +95,7 @@ export const useDashboardStore = defineStore('dashboard', {
           orderby: 'date',
           order: 'desc',
         }
-        
+
         const response = await salesDashboardAPI.getOrders(params)
         this.recentOrders = response.data || []
       } catch (error) {
@@ -140,7 +142,7 @@ export const useDashboardStore = defineStore('dashboard', {
       try {
         const params = this.buildAPIParams()
         const response = await salesDashboardAPI.getSalesComparison(params)
-        
+
         this.salesComparison = {
           currentMonth: response.current_month || 0,
           previousMonth: response.previous_month || 0,
@@ -170,14 +172,27 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     async fetchAllDashboardData(refresh = false) {
-      await Promise.all([
-        this.fetchDashboardStats(refresh),
-        this.fetchRecentOrders(),
-        this.fetchTopProducts(),
-        this.fetchMonthlyRevenue(),
-        this.fetchSalesComparison(),
-        this.fetchManagerPerformance(),
-      ])
+      // برای جلوگیری از cancel شدن درخواست‌ها، اولین درخواست‌های مهم را اول ارسال می‌کنیم
+      try {
+        // مرحله اول: آمار اصلی
+        await this.fetchDashboardStats(refresh)
+
+        // مرحله دوم: درخواست‌های کمتر مهم
+        await Promise.allSettled([
+          this.fetchTopProducts(),
+          this.fetchMonthlyRevenue(),
+          this.fetchSalesComparison(),
+        ])
+
+        // مرحله سوم: درخواست‌های سنگین
+        await Promise.allSettled([
+          this.fetchRecentOrders(),
+          this.fetchManagerPerformance(),
+        ])
+      } catch (error) {
+        console.error('Error in fetchAllDashboardData:', error)
+        this.error = error.message
+      }
     },
 
     async refreshData() {

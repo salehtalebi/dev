@@ -9,6 +9,10 @@ export const routes = [
         component: () => import('@/pages/dashboard.vue'),
       },
       {
+        path: 'dashboard-new',
+        component: () => import('@/pages/dashboard-new.vue'),
+      },
+      {
         path: 'orders',
         component: () => import('@/pages/orders.vue'),
       },
@@ -28,18 +32,13 @@ export const routes = [
         path: 'account-settings',
         component: () => import('@/pages/account-settings.vue'),
       },
-
-      {
-        path: 'tables',
-        component: () => import('@/pages/tables.vue'),
-      },
       {
         path: 'form-layouts',
         component: () => import('@/pages/form-layouts.vue'),
       },
       {
-        path: 'test-api',
-        component: () => import('@/pages/test-api.vue'),
+        path: 'icons',
+        component: () => import('@/pages/icons.vue'),
       },
     ],
   },
@@ -50,10 +49,6 @@ export const routes = [
       {
         path: 'login',
         component: () => import('@/pages/login.vue'),
-      },
-      {
-        path: 'register',
-        component: () => import('@/pages/register.vue'),
       },
       {
         path: '/:pathMatch(.*)*',

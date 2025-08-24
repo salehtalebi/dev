@@ -1,5 +1,4 @@
 <script setup>
-import VerticalNavSectionTitle from '@/@layouts/components/VerticalNavSectionTitle.vue';
 import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
 </script>
 
@@ -10,6 +9,15 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
       title: 'Dashboard',
       icon: 'bx-home-circle',
       to: '/dashboard',
+    }"
+  />
+
+  <!-- Dashboard New -->
+  <VerticalNavLink
+    :item="{
+      title: 'Dashboard New',
+      icon: 'bx-bar-chart-alt-2',
+      to: '/dashboard-new',
     }"
   />
 
