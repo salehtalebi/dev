@@ -6,7 +6,7 @@ export const API_CONFIG = {
   WC_API_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_WC_API_ENDPOINT || '/wp-json/wc/v3'),
   CUSTOM_API_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_CUSTOM_API_ENDPOINT || '/wp-json/sales-dashboard/v1'),
   JWT_URL: (import.meta.env.VITE_API_BASE_URL || 'https://academy.com') + (import.meta.env.VITE_JWT_ENDPOINT || '/wp-json/sales-dashboard/v1/auth'),
-  
+
   // Account Managers
   MANAGERS: {
     'house': 'House',
@@ -95,20 +95,20 @@ export const API_CONFIG = {
 
   // Error Messages
   ERROR_MESSAGES: {
-    NETWORK_ERROR: 'خطا در اتصال به سرور',
-    INVALID_TOKEN: 'توکن نامعتبر است',
-    PERMISSION_DENIED: 'دسترسی مجاز نیست',
-    NOT_FOUND: 'اطلاعات مورد نظر یافت نشد',
-    SERVER_ERROR: 'خطای سرور',
-    VALIDATION_ERROR: 'اطلاعات وارد شده صحیح نیست',
+    NETWORK_ERROR: 'Network connection error',
+    INVALID_TOKEN: 'Invalid token',
+    PERMISSION_DENIED: 'Access denied',
+    NOT_FOUND: 'Information not found',
+    SERVER_ERROR: 'Server error',
+    VALIDATION_ERROR: 'Invalid data entered',
   },
 
   // Success Messages
   SUCCESS_MESSAGES: {
-    LOGIN_SUCCESS: 'ورود موفقیت‌آمیز',
-    DATA_LOADED: 'اطلاعات بارگذاری شد',
-    EXPORT_SUCCESS: 'خروجی با موفقیت ایجاد شد',
-    ASSIGNMENT_SUCCESS: 'تخصیص با موفقیت انجام شد',
+    LOGIN_SUCCESS: 'Login successful',
+    DATA_LOADED: 'Data loaded successfully',
+    EXPORT_SUCCESS: 'Export created successfully',
+    ASSIGNMENT_SUCCESS: 'Assignment completed successfully',
   },
 }
 
@@ -155,29 +155,29 @@ export const API_HELPERS = {
   // Handle API errors
   handleError: (error) => {
     console.error('API Error:', error)
-    
+
     if (error.message.includes('401')) {
       return API_CONFIG.ERROR_MESSAGES.INVALID_TOKEN
     }
-    
+
     if (error.message.includes('403')) {
       return API_CONFIG.ERROR_MESSAGES.PERMISSION_DENIED
     }
-    
+
     if (error.message.includes('404')) {
       return API_CONFIG.ERROR_MESSAGES.NOT_FOUND
     }
-    
+
     if (error.message.includes('422')) {
       return API_CONFIG.ERROR_MESSAGES.VALIDATION_ERROR
     }
-    
+
     return error.message || API_CONFIG.ERROR_MESSAGES.NETWORK_ERROR
   },
 
   // Get manager name by ID
   getManagerName: (managerId) => {
-    return API_CONFIG.MANAGERS[managerId] || 'نامشخص'
+    return API_CONFIG.MANAGERS[managerId] || 'Unknown'
   },
 
   // Format currency

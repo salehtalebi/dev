@@ -1,5 +1,5 @@
 /**
- * Route Guards برای Authentication
+ * Route Guards for Authentication
  */
 import { useAuthStore } from '@/stores/auth'
 

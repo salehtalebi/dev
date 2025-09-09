@@ -62,8 +62,8 @@ export const useCustomersStore = defineStore('customers', {
   actions: {
     // Initialize API instance
     _getAPI() {
-      const { getCustomers, getCustomer, getCustomerStatistics } = useAPI()
-      return { getCustomers, getCustomer, getCustomerStatistics }
+      const { getCustomers, getCustomer, getCustomerStatistics, getOrders } = useAPI()
+      return { getCustomers, getCustomer, getCustomerStatistics, getOrders }
     },
 
     async fetchCustomers(page = 1, refresh = false) {
@@ -81,23 +81,25 @@ export const useCustomersStore = defineStore('customers', {
           ...this.buildAPIParams(),
         }
 
-        const query = new URLSearchParams(params).toString()
         const api = this._getAPI()
-        const response = await api.getCustomers(params)
+        const { data, headers } = await api.getCustomers(params)
+        const items = Array.isArray(data) ? data : (data?.data || [])
 
         if (refresh || page === 1) {
-          this.customers = response.data || response || []
+          this.customers = items
         } else {
-          this.customers.push(...(response.data || response || []))
+          this.customers.push(...items)
         }
 
-        // Update pagination based on response - avoid reactive loops
-        this.totalCustomers = response.total || 0
-        this.pagination.totalPages = Math.ceil((response.total || 0) / this.pagination.perPage)
+        let total = parseInt(headers.get('x-wp-total') || 'NaN')
+        let totalPages = parseInt(headers.get('x-wp-totalpages') || 'NaN')
+        if (!Number.isFinite(total)) total = parseInt(data?.total ?? '0')
+        if (!Number.isFinite(totalPages)) totalPages = parseInt(data?.pages ?? '1')
+        this.totalCustomers = Number.isFinite(total) ? total : 0
+        this.pagination.totalPages = Number.isFinite(totalPages) ? totalPages : 1
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
 
-        // Only update page if different to prevent loops
         if (this.pagination.page !== page) {
           this.pagination.page = page
         }
@@ -108,8 +110,8 @@ export const useCustomersStore = defineStore('customers', {
         this.customers = [
           {
             id: 1,
-            first_name: 'احمد',
-            last_name: 'محمدی',
+            first_name: 'Ahmad',
+            last_name: 'Mohammad',
             email: 'ahmad@test.com',
             username: 'ahmad',
             date_created: '2023-01-15T10:00:00',
@@ -118,10 +120,10 @@ export const useCustomersStore = defineStore('customers', {
           },
           {
             id: 2,
-            first_name: 'فاطمه',
-            last_name: 'حسینی',
-            email: 'fatemeh@test.com',
-            username: 'fatemeh',
+            first_name: 'Sarah',
+            last_name: 'Johnson',
+            email: 'sarah@test.com',
+            username: 'sarah',
             date_created: '2023-02-20T14:30:00',
             orders_count: 3,
             total_spent: '180000'
@@ -148,8 +150,8 @@ export const useCustomersStore = defineStore('customers', {
         // Mock data for testing
         this.currentCustomer = {
           id: customerId,
-          first_name: 'احمد',
-          last_name: 'محمدی',
+          first_name: 'Ahmad',
+          last_name: 'Mohammad',
           email: 'ahmad@test.com',
           username: 'ahmad',
           date_created: '2023-01-15T10:00:00',
@@ -157,11 +159,11 @@ export const useCustomersStore = defineStore('customers', {
           total_spent: '250000',
           phone: '09123456789',
           billing: {
-            first_name: 'احمد',
-            last_name: 'محمدی',
-            address_1: 'خیابان آزادی',
-            city: 'تهران',
-            country: 'IR'
+            first_name: 'Ahmad',
+            last_name: 'Mohammad',
+            address_1: 'Main Street',
+            city: 'New York',
+            country: 'US'
           }
         }
         return this.currentCustomer
@@ -183,13 +185,11 @@ export const useCustomersStore = defineStore('customers', {
           order: 'desc'
         }
         const api = this._getAPI()
-        const orders = await api.getOrders(params)
-        this.customerOrders = orders.data || orders || []
-        return {
-          data: this.customerOrders,
-          total: orders.total || this.customerOrders.length,
-          pages: Math.ceil((orders.total || this.customerOrders.length) / perPage)
-        }
+        const { data, headers } = await api.getOrders(params)
+        this.customerOrders = Array.isArray(data) ? data : (data?.data || [])
+        const total = parseInt(headers.get('x-wp-total') || '0')
+        const pages = parseInt(headers.get('x-wp-totalpages') || '1')
+        return { data: this.customerOrders, total, pages }
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch customer orders:', error)
@@ -201,7 +201,7 @@ export const useCustomersStore = defineStore('customers', {
             total: '125000',
             date_created: '2023-03-15T12:00:00',
             line_items: [
-              { name: 'محصول نمونه', quantity: 2, price: 62500 }
+              { name: 'Sample Product', quantity: 2, price: 62500 }
             ]
           }
         ]
@@ -242,7 +242,19 @@ export const useCustomersStore = defineStore('customers', {
     },
 
     setFilters(filters) {
-      this.filters = { ...this.filters, ...filters }
+      // Normalize snake_case fields coming from UI
+      const normalized = { ...filters }
+      if (Object.prototype.hasOwnProperty.call(filters, 'account_manager')) normalized.accountManager = filters.account_manager
+      // UI may pass date_registered_*; map to dateFrom/dateTo used by API params
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_registered_from')) normalized.dateFrom = filters.date_registered_from
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_registered_to')) normalized.dateTo = filters.date_registered_to
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_from')) normalized.dateFrom = filters.date_from
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_to')) normalized.dateTo = filters.date_to
+      if (Object.prototype.hasOwnProperty.call(filters, 'search')) normalized.search = filters.search
+      if (Object.prototype.hasOwnProperty.call(filters, 'role')) normalized.role = filters.role
+      if (Object.prototype.hasOwnProperty.call(filters, 'dateRange')) normalized.dateRange = filters.dateRange
+
+      this.filters = { ...this.filters, ...normalized }
       this.pagination.page = 1
     },
 
@@ -276,8 +288,11 @@ export const useCustomersStore = defineStore('customers', {
       if (this.filters.search) params.search = this.filters.search
       if (this.filters.role) params.role = this.filters.role
       if (this.filters.accountManager) params.account_manager = this.filters.accountManager
-      if (this.filters.dateFrom) params.after = this.filters.dateFrom
-      if (this.filters.dateTo) params.before = this.filters.dateTo
+      // Support both normalized and raw UI keys (defensive)
+      const dateFrom = this.filters.dateFrom || this.filters.date_registered_from
+      const dateTo = this.filters.dateTo || this.filters.date_registered_to
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo) params.date_to = dateTo
 
       return params
     },

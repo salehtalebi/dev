@@ -22,7 +22,7 @@ const errorMessage = ref('')
 
 const handleLogin = async () => {
   if (!form.value.email || !form.value.password) {
-    errorMessage.value = 'لطفا ایمیل و رمز عبور را وارد کنید'
+    errorMessage.value = 'Please enter email and password'
     return
   }
 
@@ -55,16 +55,16 @@ const handleLogin = async () => {
         }, 100)
       } else {
         console.log('User role not sufficient:', authStore.user?.roles)
-        errorMessage.value = 'شما مجوز دسترسی به این پنل را ندارید'
+        errorMessage.value = 'You do not have permission to access this panel'
         await authStore.logout()
       }
     } else {
-      errorMessage.value = result?.message || 'خطا در ورود به سیستم'
+      errorMessage.value = result?.message || 'Login error'
       console.error('Login failed:', result)
     }
   } catch (error) {
     console.error('Login error:', error)
-    errorMessage.value = error.message || 'خطای اتصال به سرور'
+    errorMessage.value = error.message || 'Server connection error'
   } finally {
     isLoading.value = false
   }

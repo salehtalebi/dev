@@ -1,7 +1,7 @@
 <template>
   <VCard>
     <VCardItem>
-      <VCardTitle>محصولات پرفروش</VCardTitle>
+      <VCardTitle>Top Selling Products</VCardTitle>
       <template #append>
         <VBtn
           icon
@@ -37,7 +37,7 @@
           size="48"
           class="text-disabled mb-4"
         />
-        <p class="text-medium-emphasis">داده‌ای برای نمایش وجود ندارد</p>
+        <p class="text-medium-emphasis">No data available for display</p>
         <VBtn
           color="primary"
           variant="outlined"
@@ -45,7 +45,7 @@
           @click="refreshData"
           :loading="loading"
         >
-          تلاش مجدد
+          Retry
         </VBtn>
       </div>
 
@@ -65,10 +65,10 @@
             />
             <div>
               <div class="text-body-2 font-weight-medium">
-                {{ product.product_name || `محصول ${product.product_id}` }}
+                {{ product.product_name || `Product ${product.product_id}` }}
               </div>
               <div class="text-caption text-medium-emphasis">
-                {{ product.total_sold }} عدد فروخته شده
+                {{ product.total_sold }} units sold
               </div>
             </div>
           </div>
@@ -154,16 +154,16 @@ const chartOptions = computed(() => {
               fontSize: '24px',
               fontWeight: 600,
               color: textColor,
-              formatter: (val) => `${val} عدد`
+              formatter: (val) => `${val} units`
             },
             total: {
               show: true,
               fontSize: '14px',
-              label: 'مجموع فروش',
+              label: 'Total Sales',
               color: textColor,
               formatter: () => {
                 const total = chartData.value.series.reduce((sum, val) => sum + val, 0)
-                return `${total} عدد`
+                return `${total} units`
               }
             }
           }
@@ -173,7 +173,7 @@ const chartOptions = computed(() => {
     tooltip: {
       theme: vuetifyTheme.current.value.dark ? 'dark' : 'light',
       y: {
-        formatter: (val) => `${val} عدد فروخته شده`
+        formatter: (val) => `${val} units sold`
       }
     },
     responsive: [{

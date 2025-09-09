@@ -1,7 +1,7 @@
 <template>
   <VCard>
     <VCardItem>
-      <VCardTitle>درآمد ماهانه</VCardTitle>
+      <VCardTitle>Monthly Revenue</VCardTitle>
       <template #append>
         <VBtn
           icon
@@ -53,7 +53,7 @@
           size="48"
           class="text-disabled mb-4"
         />
-        <p class="text-medium-emphasis">داده‌ای برای نمایش وجود ندارد</p>
+        <p class="text-medium-emphasis">No data available for display</p>
         <VBtn
           color="primary"
           variant="outlined"
@@ -61,7 +61,7 @@
           @click="refreshData"
           :loading="loading"
         >
-          تلاش مجدد
+          Retry
         </VBtn>
       </div>
     </VCardText>

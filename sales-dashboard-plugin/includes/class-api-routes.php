@@ -487,21 +487,58 @@ class Sales_Dashboard_API_Routes {
                 }
             }
             
-            // Get total count for pagination (optimized)
+            // Get total count for pagination (optimized, but aligned with filters)
             $count_args = array(
                 'return' => 'ids',
                 'status' => $args['status'] ?? 'any',
-                'limit' => -1
+                'limit' => -1,
             );
-            
-            // Add customer filter for count if exists
+
+            // Apply customer filter for count if exists
             if (isset($args['customer'])) {
                 $count_args['customer'] = $args['customer'];
             }
-            
+
+            // Apply date filters for count if present
+            if ($request->get_param('date_range')) {
+                $date_range = $request->get_param('date_range');
+                $date_args = $this->get_date_range_args($date_range);
+                if ($date_args) {
+                    $count_args = array_merge($count_args, $date_args);
+                }
+            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
+                if ($request->get_param('date_from')) {
+                    $count_args['date_created'] = '>=' . $request->get_param('date_from');
+                }
+                if ($request->get_param('date_to')) {
+                    $end_date = $request->get_param('date_to') . ' 23:59:59';
+                    $count_args['date_created'] = isset($count_args['date_created'])
+                        ? $count_args['date_created'] . '...' . $end_date
+                        : '<=' . $end_date;
+                }
+            }
+
             // Get count using IDs only (less memory)
             $count_query = new WC_Order_Query($count_args);
-            $total_orders = count($count_query->get_orders());
+            $count_ids = $count_query->get_orders();
+
+            // If amount filters are present, count only those that match
+            $min_amount = $request->get_param('min_amount');
+            $max_amount = $request->get_param('max_amount');
+            if (($min_amount !== null && $min_amount !== '') || ($max_amount !== null && $max_amount !== '')) {
+                $filtered_count = 0;
+                foreach ($count_ids as $order_id) {
+                    $o = wc_get_order($order_id);
+                    if (!$o) continue;
+                    $total_val = floatval($o->get_total());
+                    if ($min_amount !== null && $min_amount !== '' && $total_val < floatval($min_amount)) continue;
+                    if ($max_amount !== null && $max_amount !== '' && $total_val > floatval($max_amount)) continue;
+                    $filtered_count++;
+                }
+                $total_orders = $filtered_count;
+            } else {
+                $total_orders = is_array($count_ids) ? count($count_ids) : intval($count_ids);
+            }
             
             // Limit the main query to avoid memory issues
             $args['limit'] = min($args['limit'], 100); // Max 100 orders per page
@@ -544,13 +581,18 @@ class Sales_Dashboard_API_Routes {
                 gc_collect_cycles();
             }
             
-            return array(
+            $response_payload = array(
                 'data' => $formatted_orders,
                 'total' => $total_orders,
                 'page' => intval($request->get_param('page') ?: 1),
                 'per_page' => intval($request->get_param('per_page') ?: 20),
                 'pages' => ceil($total_orders / intval($request->get_param('per_page') ?: 20))
             );
+
+            $resp = new WP_REST_Response($response_payload);
+            $resp->header('X-WP-Total', $total_orders);
+            $resp->header('X-WP-TotalPages', $response_payload['pages']);
+            return $resp;
             
         } catch (Exception $e) {
             error_log('Sales Dashboard API Error in get_enhanced_orders: ' . $e->getMessage());
@@ -562,47 +604,73 @@ class Sales_Dashboard_API_Routes {
      * Get enhanced customers (with additional data)
      */
     public function get_enhanced_customers($request) {
+        $per_page = intval($request->get_param('per_page') ?: 20);
+        $page = intval($request->get_param('page') ?: 1);
+
         $args = array(
-            'number' => min($request->get_param('per_page') ?: 20, 100),
-            'offset' => ($request->get_param('page') - 1) * ($request->get_param('per_page') ?: 20)
+            'number' => min($per_page, 100),
+            'offset' => ($page - 1) * $per_page,
+            'fields' => 'all'
         );
-        
+
         if ($request->get_param('search')) {
             $args['search'] = '*' . esc_attr($request->get_param('search')) . '*';
         }
-        
+
         if ($request->get_param('role')) {
             $args['role'] = $request->get_param('role');
         }
-        
+
         // Handle account manager filter for customers
         if ($request->get_param('account_manager')) {
             $manager_id = $request->get_param('account_manager');
             $args['meta_key'] = 'account_manager_id';
             $args['meta_value'] = $manager_id;
         }
-        
+
+        // Date registered filters
+        $date_query = array();
+        if ($request->get_param('date_from')) {
+            $date_query['after'] = $request->get_param('date_from');
+        }
+        if ($request->get_param('date_to')) {
+            // include the full day
+            $date_query['before'] = $request->get_param('date_to') . ' 23:59:59';
+        }
+        if (!empty($date_query)) {
+            $args['date_query'] = array($date_query);
+        }
+
+        // Query
         $customer_query = new WP_User_Query($args);
         $customers = $customer_query->get_results();
-        
+
         $formatted_customers = array();
         foreach ($customers as $user) {
             $customer = new WC_Customer($user->ID);
             $customer_data = $this->format_customer_data($customer);
-            
+
             // Add account manager info
             $customer_data['account_manager'] = $this->get_customer_account_manager($customer->get_id());
-            
+
             $formatted_customers[] = $customer_data;
         }
-        
-        return array(
+
+        $total = intval($customer_query->get_total());
+        $pages = $per_page > 0 ? ceil($total / $per_page) : 1;
+
+        $response_payload = array(
             'data' => $formatted_customers,
-            'total' => $customer_query->get_total(),
-            'page' => intval($request->get_param('page') ?: 1),
-            'per_page' => intval($request->get_param('per_page') ?: 20),
-            'pages' => ceil($customer_query->get_total() / intval($request->get_param('per_page') ?: 20))
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $per_page,
+            'pages' => $pages
         );
+
+        $resp = new WP_REST_Response($response_payload);
+        $resp->header('X-WP-Total', $total);
+        $resp->header('X-WP-TotalPages', $pages);
+        return $resp;
     }
     
     /**

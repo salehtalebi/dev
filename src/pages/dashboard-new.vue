@@ -15,7 +15,7 @@
                 <VIcon icon="bx-cart" />
               </VAvatar>
               <div>
-                <div class="text-caption text-medium-emphasis">سفارشات امروز</div>
+                <div class="text-caption text-medium-emphasis">Today's Orders</div>
                 <div class="text-h6">{{ dashboardData.todayOrders || 0 }}</div>
                 <div class="text-caption" :class="getGrowthColor(dashboardData.ordersGrowth)">
                   {{ formatGrowth(dashboardData.ordersGrowth) }}%
@@ -39,7 +39,7 @@
                 <VIcon icon="bx-dollar" />
               </VAvatar>
               <div>
-                <div class="text-caption text-medium-emphasis">فروش امروز</div>
+                <div class="text-caption text-medium-emphasis">Today's Sales</div>
                 <div class="text-h6">${{ formatCurrency(dashboardData.todayRevenue) }}</div>
                 <div class="text-caption" :class="getGrowthColor(dashboardData.revenueGrowth)">
                   {{ formatGrowth(dashboardData.revenueGrowth) }}%
@@ -63,9 +63,9 @@
                 <VIcon icon="bx-user" />
               </VAvatar>
               <div>
-                <div class="text-caption text-medium-emphasis">مشتریان جدید</div>
+                <div class="text-caption text-medium-emphasis">New Customers</div>
                 <div class="text-h6">{{ dashboardData.newCustomers || 0 }}</div>
-                <div class="text-caption text-success">این ماه</div>
+                <div class="text-caption text-success">This Month</div>
               </div>
             </div>
           </VCardText>
@@ -85,9 +85,9 @@
                 <VIcon icon="bx-trending-up" />
               </VAvatar>
               <div>
-                <div class="text-caption text-medium-emphasis">میانگین سفارش</div>
+                <div class="text-caption text-medium-emphasis">Average Order</div>
                 <div class="text-h6">${{ formatCurrency(dashboardData.averageOrderValue) }}</div>
-                <div class="text-caption text-medium-emphasis">این ماه</div>
+                <div class="text-caption text-medium-emphasis">This Month</div>
               </div>
             </div>
           </VCardText>
@@ -126,25 +126,24 @@
       <VCol cols="12">
         <VCard>
           <VCardTitle class="d-flex justify-space-between align-center">
-            <span>آخرین سفارشات</span>
+            <span>Recent Orders</span>
             <VBtn
               size="small"
               variant="outlined"
               to="/orders"
             >
-              مشاهده همه
+              View All
             </VBtn>
           </VCardTitle>
           <VCardText>
             <div class="text-center py-8">
-              <p class="text-medium-emphasis">برای مشاهده آخرین سفارشات به صفحه سفارشات مراجعه کنید</p>
+              <p class="text-medium-emphasis">To view recent orders, go to the orders page</p>
               <VBtn
                 color="primary"
-                variant="outlined"
-                to="/orders"
-                class="mt-4"
+                size="small"
+                @click="$router.push('/orders')"
               >
-                مشاهده سفارشات
+                View Orders
               </VBtn>
             </div>
           </VCardText>

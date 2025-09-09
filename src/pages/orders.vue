@@ -7,8 +7,8 @@
           <VCardText>
             <VRow align="center">
               <VCol cols="12" md="6">
-                <h2 class="text-h4 mb-0">لیست سفارشات</h2>
-                <p class="text-body-1 mb-0">مدیریت و نمایش سفارشات</p>
+                <h2 class="text-h4 mb-0">Orders List</h2>
+                <p class="text-body-1 mb-0">Manage and view orders</p>
               </VCol>
               <VCol cols="12" md="6" class="text-end">
                 <VBtn
@@ -17,7 +17,7 @@
                   @click="exportOrders"
                 >
                   <VIcon start icon="bx-download" />
-                  خروجی Excel
+                  Export Excel
                 </VBtn>
               </VCol>
             </VRow>
@@ -30,13 +30,13 @@
     <VRow>
       <VCol cols="12">
         <VCard class="mb-6">
-          <VCardTitle>فیلترها</VCardTitle>
+          <VCardTitle>Filters</VCardTitle>
           <VCardText>
             <VRow>
               <VCol cols="12" md="2">
                 <VTextField
                   v-model="localFilters.search"
-                  label="جستجو"
+                  label="Search"
                   prepend-inner-icon="bx-search"
                   clearable
                 />
@@ -47,7 +47,7 @@
                   :items="orderStatuses"
                   item-title="text"
                   item-value="value"
-                  label="وضعیت سفارش"
+                  label="Order Status"
                   clearable
                 />
               </VCol>
@@ -57,7 +57,7 @@
                   :items="accountManagers"
                   item-title="text"
                   item-value="value"
-                  label="اکانت منیجر"
+                  label="Account Manager"
                   clearable
                 />
               </VCol>
@@ -67,16 +67,16 @@
                   :items="dateRanges"
                   item-title="text"
                   item-value="value"
-                  label="بازه زمانی"
+                  label="Date Range"
                   clearable
                 />
               </VCol>
               <VCol cols="12" md="2">
                 <VTextField
                   v-model="localFilters.min_amount"
-                  label="حداقل مبلغ"
+                  label="Min Amount"
                   type="number"
-                  suffix="تومان"
+                  suffix="USD"
                 />
               </VCol>
               <VCol cols="12" md="2" class="d-flex align-center gap-2">
@@ -84,14 +84,14 @@
                   color="primary"
                   @click="applyFilters"
                 >
-                  اعمال
+                  Apply
                 </VBtn>
                 <VBtn
                   color="secondary"
                   variant="outlined"
                   @click="clearFilters"
                 >
-                  پاک
+                  Clear
                 </VBtn>
               </VCol>
             </VRow>
@@ -101,23 +101,23 @@
               <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_from"
-                  label="از تاریخ"
+                  label="From Date"
                   type="date"
                 />
               </VCol>
               <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_to"
-                  label="تا تاریخ"
+                  label="To Date"
                   type="date"
                 />
               </VCol>
               <VCol v-if="localFilters.min_amount" cols="12" md="3">
                 <VTextField
                   v-model="localFilters.max_amount"
-                  label="حداکثر مبلغ"
+                  label="Max Amount"
                   type="number"
-                  suffix="تومان"
+                  suffix="USD"
                 />
               </VCol>
             </VRow>
@@ -138,17 +138,21 @@
                 color="primary"
                 indeterminate
               />
-              <p class="mt-4">در حال بارگذاری...</p>
+              <p class="mt-4">Loading...</p>
             </div>
 
             <!-- Table -->
             <VDataTable
               v-else
+              v-model:items-per-page="itemsPerPage"
+              v-model:page="currentPage"
               :headers="headers"
               :items="orders"
               :loading="isLoading"
+              :items-length="totalOrders"
               item-value="id"
               class="elevation-1"
+              @update:options="updateOptions"
             >
               <!-- Order ID -->
               <template #item.id="{ item }">
@@ -249,12 +253,13 @@ const localFilters = ref({
   date_from: '',
   date_to: '',
   min_amount: '',
-  max_amount: ''
+  max_amount: '',
+  customer: ''
 })
 
 // Data
 const accountManagers = [
-  { text: 'همه', value: '' },
+  { text: 'All', value: '' },
   { text: 'House', value: 'house' },
   { text: 'Ina Istok', value: '1465' },
   { text: 'Pina Lee', value: '845' },
@@ -264,16 +269,16 @@ const accountManagers = [
 ]
 
 const dateRanges = [
-  { text: 'همه', value: '' },
-  { text: 'این هفته', value: 'this_week' },
-  { text: 'این ماه', value: 'this_month' },
-  { text: 'ماه گذشته', value: 'last_month' },
-  { text: 'سال گذشته', value: 'last_year' },
-  { text: 'بازه دلخواه', value: 'custom' }
+  { text: 'All', value: '' },
+  { text: 'This Week', value: 'this_week' },
+  { text: 'This Month', value: 'this_month' },
+  { text: 'Last Month', value: 'last_month' },
+  { text: 'Last Year', value: 'last_year' },
+  { text: 'Custom Range', value: 'custom' }
 ]
 
 // Pagination
-const itemsPerPage = ref(20)
+const itemsPerPage = ref(ordersStore.pagination.perPage)
 const totalOrders = computed(() => ordersStore.totalOrders || 0)
 const itemsPerPageOptions = [
   { value: 10, title: '10' },
@@ -283,12 +288,12 @@ const itemsPerPageOptions = [
 ]
 
 const pageText = computed(() => {
-  if (totalOrders.value === 0) return 'هیچ آیتمی یافت نشد'
+  if (totalOrders.value === 0) return 'No items found'
   
   const start = (currentPage.value - 1) * itemsPerPage.value + 1
   const end = Math.min(currentPage.value * itemsPerPage.value, totalOrders.value)
   
-  return `${start}-${end} از ${totalOrders.value}`
+  return `${start}-${end} of ${totalOrders.value}`
 })
 
 const updateOptions = (options) => {
@@ -323,7 +328,7 @@ const updatePage = (newPage) => {
 }
 
 // Computed
-const orders = computed(() => ordersStore.orders)
+const orders = computed(() => Array.isArray(ordersStore.orders) ? ordersStore.orders : [])
 const isLoading = computed(() => ordersStore.isLoading)
 const totalPages = computed(() => ordersStore.totalPages)
 const currentPage = computed({
@@ -338,12 +343,12 @@ const orderStatuses = computed(() => ordersStore.orderStatuses)
 
 // Table headers
 const headers = [
-  { title: 'شماره سفارش', key: 'id', sortable: true },
-  { title: 'مشتری', key: 'customer', sortable: false },
-  { title: 'وضعیت', key: 'status', sortable: true },
-  { title: 'مبلغ کل', key: 'total', sortable: true },
-  { title: 'تاریخ', key: 'date_created', sortable: true },
-  { title: 'عملیات', key: 'actions', sortable: false }
+  { title: 'Order Number', key: 'id', sortable: true },
+  { title: 'Customer', key: 'customer', sortable: false },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Total Amount', key: 'total', sortable: true },
+  { title: 'Date', key: 'date_created', sortable: true },
+  { title: 'Actions', key: 'actions', sortable: false }
 ]
 
 // Methods
@@ -461,8 +466,19 @@ const exportOrders = async () => {
   }
 }
 
+// Check for URL parameters
+const checkUrlParameters = () => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const customerParam = urlParams.get('customer')
+  if (customerParam) {
+    localFilters.value.customer = customerParam
+    ordersStore.setFilters({ customer: customerParam })
+  }
+}
+
 // Initialize
 onMounted(() => {
+  checkUrlParameters()
   fetchOrders()
 })
 </script>

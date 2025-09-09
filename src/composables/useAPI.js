@@ -13,7 +13,8 @@ export function useAPI() {
     error.value = null
   }
 
-  const makeRequest = async (url, options = {}) => {
+  // When returnHeaders=true, resolve to { data, headers }
+  const makeRequest = async (url, options = {}, returnHeaders = false) => {
     const authStore = useAuthStore()
 
     const config = {
@@ -40,6 +41,12 @@ export function useAPI() {
       throw new Error(errorData.message || `HTTP ${response.status}`)
     }
 
+    if (returnHeaders) {
+      // Clone to allow both headers read and json parse safely in some runtimes
+      const data = await response.json().catch(() => null)
+      return { data, headers: response.headers }
+    }
+
     return response.json()
   }
 
@@ -51,7 +58,7 @@ export function useAPI() {
       const result = await requestFn()
       return result
     } catch (err) {
-      error.value = err.message || 'خطا در برقراری ارتباط با سرور'
+      error.value = err.message || 'Error connecting to server'
       throw err
     } finally {
       loading.value = false
@@ -61,7 +68,7 @@ export function useAPI() {
   // Orders API
   const getOrders = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''), {}, true)
   }
 
   const getOrder = async (orderId) => {
@@ -78,7 +85,7 @@ export function useAPI() {
   // Customers API
   const getCustomers = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/wc/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''), {}, true)
   }
 
   const getCustomer = async (customerId) => {
@@ -118,12 +125,18 @@ export function useAPI() {
   // Export API
   const exportOrders = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''), {
+      method: 'POST',
+      body: params
+    })
   }
 
   const exportCustomers = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
-    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/export/customers${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''), {
+      method: 'POST',
+      body: params
+    })
   }
 
   return {
@@ -185,10 +198,10 @@ export function useAuth() {
  * Formatters composable
  */
 export function useFormatters() {
-  const formatPrice = (price, currency = 'تومان') => {
+  const formatPrice = (price, currency = 'USD') => {
     if (!price) return '0'
 
-    const formatted = new Intl.NumberFormat('fa-IR').format(price)
+    const formatted = new Intl.NumberFormat('en-US').format(price)
     return `${formatted} ${currency}`
   }
 
@@ -201,18 +214,18 @@ export function useFormatters() {
       day: 'numeric',
     }
 
-    return new Intl.DateTimeFormat('fa-IR', { ...defaultOptions, ...options }).format(new Date(date))
+    return new Intl.DateTimeFormat('en-US', { ...defaultOptions, ...options }).format(new Date(date))
   }
 
   const formatOrderStatus = (status) => {
     const statusMap = {
-      'pending': 'در انتظار پرداخت',
-      'processing': 'در حال پردازش',
-      'on-hold': 'در انتظار',
-      'completed': 'تکمیل شده',
-      'cancelled': 'لغو شده',
-      'refunded': 'بازگشت داده شده',
-      'failed': 'ناموفق',
+      'pending': 'Pending Payment',
+      'processing': 'Processing',
+      'on-hold': 'On Hold',
+      'completed': 'Completed',
+      'cancelled': 'Cancelled',
+      'refunded': 'Refunded',
+      'failed': 'Failed',
     }
 
     return statusMap[status] || status
@@ -220,7 +233,7 @@ export function useFormatters() {
 
   const formatNumber = (number) => {
     if (!number) return '0'
-    return new Intl.NumberFormat('fa-IR').format(number)
+    return new Intl.NumberFormat('en-US').format(number)
   }
 
   return {

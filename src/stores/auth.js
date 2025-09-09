@@ -86,7 +86,7 @@ export const useAuthStore = defineStore('auth', {
 
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.message || 'خطا در ورود')
+          throw new Error(errorData.message || 'Login error')
         }
 
         const data = await response.json()
@@ -100,7 +100,7 @@ export const useAuthStore = defineStore('auth', {
 
           return { success: true, user: data.user }
         } else {
-          throw new Error('پاسخ نامعتبر از سرور')
+          throw new Error('Invalid response from server')
         }
       } catch (error) {
         this.error = error.message

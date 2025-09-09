@@ -13,25 +13,42 @@ export function useExport() {
         error.value = null
     }
 
-    const convertToCSV = (data, headers) => {
-        if (!Array.isArray(data) || data.length === 0) {
-            return ''
-        }
+    // Try to decode and download if API returns base64 content/filename
+    const maybeDownloadEncoded = (res) => {
+        if (res && (res.content || (res.data && res.data.content))) {
+            const content = res.content || res.data.content
+            const filename = res.filename || res.data.filename || `export_${new Date().toISOString().split('T')[0]}.csv`
+            const mimeType = res.mime_type || res.data.mime_type || 'text/csv'
 
-        // Create CSV header
-        const csvHeader = headers.map(h => h.title).join(',')
-
-        // Create CSV rows
-        const csvRows = data.map(row => {
-            return headers.map(header => {
-                const value = row[header.key] || ''
-                // Escape double quotes and wrap in quotes if contains comma or quotes
-                if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-                    return `"${value.replace(/"/g, '""')}"`
+            try {
+                const byteCharacters = atob(content)
+                const byteNumbers = new Array(byteCharacters.length)
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
                 }
-                return value
-            }).join(',')
-        })
+                const byteArray = new Uint8Array(byteNumbers)
+                const blob = new Blob([byteArray], { type: mimeType })
+                downloadFile(blob, filename)
+                return true
+            } catch (e) {
+                console.error('Failed to decode base64 export content', e)
+                return false
+            }
+        }
+        return false
+    }
+
+    const convertToCSV = (data, headers) => {
+        if (!Array.isArray(data) || data.length === 0) return ''
+
+        const csvHeader = headers.map(h => h.title).join(',')
+        const csvRows = data.map(row => headers.map(header => {
+            const value = row[header.key] ?? ''
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                return `"${value.replace(/"/g, '""')}"`
+            }
+            return value
+        }).join(','))
 
         return [csvHeader, ...csvRows].join('\n')
     }
@@ -53,28 +70,26 @@ export function useExport() {
 
         try {
             const response = await apiExportOrders(filters)
+            if (maybeDownloadEncoded(response)) return { success: true }
 
             if (response.data) {
-                // Convert data to CSV
                 const csv = convertToCSV(response.data, [
-                    { key: 'id', title: 'شماره سفارش' },
-                    { key: 'customer_name', title: 'نام مشتری' },
-                    { key: 'customer_email', title: 'ایمیل مشتری' },
-                    { key: 'status', title: 'وضعیت' },
-                    { key: 'total', title: 'مبلغ کل' },
-                    { key: 'date_created', title: 'تاریخ ایجاد' },
-                    { key: 'account_manager', title: 'اکانت منیجر' }
+                    { key: 'id', title: 'Order ID' },
+                    { key: 'customer_name', title: 'Customer Name' },
+                    { key: 'customer_email', title: 'Customer Email' },
+                    { key: 'status', title: 'Status' },
+                    { key: 'total', title: 'Total Amount' },
+                    { key: 'date_created', title: 'Creation Date' },
+                    { key: 'account_manager', title: 'Account Manager' }
                 ])
-
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
                 const filename = `orders_${new Date().toISOString().split('T')[0]}.csv`
                 downloadFile(blob, filename)
             }
-
             return { success: true }
         } catch (err) {
             console.error('Export orders error:', err)
-            error.value = err.message || 'خطا در خروجی گیری سفارشات'
+            error.value = err.message || 'Error exporting orders'
             return { success: false, error: error.value }
         } finally {
             isExporting.value = false
@@ -87,41 +102,33 @@ export function useExport() {
 
         try {
             const response = await apiExportCustomers(filters)
+            if (maybeDownloadEncoded(response)) return { success: true }
 
             if (response.data) {
-                // Convert data to CSV
                 const csv = convertToCSV(response.data, [
-                    { key: 'id', title: 'شناسه مشتری' },
-                    { key: 'first_name', title: 'نام' },
-                    { key: 'last_name', title: 'نام خانوادگی' },
-                    { key: 'email', title: 'ایمیل' },
-                    { key: 'phone', title: 'تلفن' },
-                    { key: 'total_orders', title: 'تعداد سفارشات' },
-                    { key: 'total_spent', title: 'مجموع خرید' },
-                    { key: 'date_registered', title: 'تاریخ عضویت' },
-                    { key: 'account_manager', title: 'اکانت منیجر' }
+                    { key: 'id', title: 'Customer ID' },
+                    { key: 'first_name', title: 'First Name' },
+                    { key: 'last_name', title: 'Last Name' },
+                    { key: 'email', title: 'Email' },
+                    { key: 'phone', title: 'Phone' },
+                    { key: 'total_orders', title: 'Total Orders' },
+                    { key: 'total_spent', title: 'Total Spent' },
+                    { key: 'date_registered', title: 'Registration Date' },
+                    { key: 'account_manager', title: 'Account Manager' }
                 ])
-
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
                 const filename = `customers_${new Date().toISOString().split('T')[0]}.csv`
                 downloadFile(blob, filename)
             }
-
             return { success: true }
         } catch (err) {
             console.error('Export customers error:', err)
-            error.value = err.message || 'خطا در خروجی گیری مشتریان'
+            error.value = err.message || 'Error exporting customers'
             return { success: false, error: error.value }
         } finally {
             isExporting.value = false
         }
     }
 
-    return {
-        isExporting,
-        error,
-        clearError,
-        exportOrders,
-        exportCustomers
-    }
+    return { isExporting, error, clearError, exportOrders, exportCustomers }
 }

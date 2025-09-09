@@ -27,7 +27,7 @@ export function useAnalytics() {
             return {
                 categories: [],
                 series: [{
-                    name: 'درآمد ماهانه',
+                    name: 'Monthly Revenue',
                     data: []
                 }]
             }
@@ -48,7 +48,7 @@ export function useAnalytics() {
         return {
             categories,
             series: [{
-                name: 'درآمد ماهانه',
+                name: 'Monthly Revenue',
                 data
             }]
         }
@@ -63,7 +63,7 @@ export function useAnalytics() {
         }
 
         const labels = topProducts.value.map(product =>
-            product.product_name || `محصول ${product.product_id}`
+            product.product_name || `Product ${product.product_id}`
         )
         const series = topProducts.value.map(product =>
             parseInt(product.total_sold || 0)
@@ -90,10 +90,10 @@ export function useAnalytics() {
             return {
                 categories: [],
                 series: [{
-                    name: 'تعداد سفارشات',
+                    name: 'Orders Count',
                     data: []
                 }, {
-                    name: 'درآمد',
+                    name: 'Revenue',
                     data: []
                 }]
             }
@@ -112,10 +112,10 @@ export function useAnalytics() {
         return {
             categories,
             series: [{
-                name: 'تعداد سفارشات',
+                name: 'Orders Count',
                 data: ordersData
             }, {
-                name: 'درآمد',
+                name: 'Revenue',
                 data: revenueData
             }]
         }
@@ -123,12 +123,12 @@ export function useAnalytics() {
 
     // Methods
     const fetchDashboardData = async (force = false) => {
-        // اگه در حال fetch کردن هست، منتظر می‌مونیم
+        // If currently fetching, wait
         if (isCurrentlyFetching && !force) {
             return
         }
 
-        // اگه قبلا initialize شده و force نیست، fetch نمی‌کنیم
+        // If already initialized and not forced, don't fetch
         if (isInitialized && !force) {
             return
         }
@@ -144,7 +144,7 @@ export function useAnalytics() {
             isInitialized = true
         } catch (err) {
             console.error('Error fetching dashboard data:', err)
-            error.value = err.message || 'خطا در دریافت داده‌های داشبورد'
+            error.value = err.message || 'Error fetching dashboard data'
         } finally {
             loading.value = false
             isCurrentlyFetching = false
@@ -152,11 +152,11 @@ export function useAnalytics() {
     }
 
     const refreshData = () => {
-        isInitialized = false // Reset برای force fetch
+        isInitialized = false // Reset for force fetch
         return fetchDashboardData(true)
     }
 
-    // Auto fetch on mount فقط اگه initialize نشده باشه
+    // Auto fetch on mount only if not initialized
     onMounted(() => {
         if (!isInitialized && !isCurrentlyFetching) {
             fetchDashboardData()

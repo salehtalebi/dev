@@ -166,6 +166,8 @@ class SalesDashboardPlugin {
             header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
             header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-WP-Nonce');
             header('Access-Control-Allow-Credentials: true');
+            // Expose pagination headers so frontend can read totals
+            header('Access-Control-Expose-Headers: X-WP-Total, X-WP-TotalPages');
             header('Access-Control-Max-Age: 86400');
         }
     }

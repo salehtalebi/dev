@@ -1,7 +1,7 @@
 <template>
   <VCard>
     <VCardItem>
-      <VCardTitle>عملکرد اکانت منیجرها</VCardTitle>
+      <VCardTitle>Account Managers Performance</VCardTitle>
       <template #append>
         <VBtn
           icon
@@ -37,7 +37,7 @@
           size="48"
           class="text-disabled mb-4"
         />
-        <p class="text-medium-emphasis">داده‌ای برای نمایش وجود ندارد</p>
+        <p class="text-medium-emphasis">No data available for display</p>
         <VBtn
           color="primary"
           variant="outlined"
@@ -45,7 +45,7 @@
           @click="refreshData"
           :loading="loading"
         >
-          تلاش مجدد
+          Retry
         </VBtn>
       </div>
 
@@ -71,7 +71,7 @@
                 {{ manager.manager_name }}
               </div>
               <div class="text-caption text-medium-emphasis mb-2">
-                {{ manager.orders_count }} سفارش
+                {{ manager.orders_count }} orders
               </div>
               <VChip
                 :color="getManagerColor(manager.manager_id)"
@@ -171,7 +171,7 @@ const chartOptions = computed(() => {
     yaxis: [
       {
         title: {
-          text: 'تعداد سفارشات',
+          text: 'Orders Count',
           style: {
             color: textColor,
             fontSize: '12px'
@@ -187,7 +187,7 @@ const chartOptions = computed(() => {
       {
         opposite: true,
         title: {
-          text: 'درآمد ($)',
+          text: 'Revenue ($)',
           style: {
             color: textColor,
             fontSize: '12px'
@@ -208,7 +208,7 @@ const chartOptions = computed(() => {
       intersect: false,
       y: [
         {
-          formatter: (val) => `${val} سفارش`
+          formatter: (val) => `${val} orders`
         },
         {
           formatter: (val) => `$${formatCurrency(val)}`

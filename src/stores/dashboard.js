@@ -34,7 +34,7 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     error: null,
     filters: {
-      dateRange: 'last_month',
+      dateRange: 'year',
       accountManager: null,
       customStartDate: null,
       customEndDate: null,
@@ -191,19 +191,19 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     async fetchAllDashboardData(refresh = false) {
-      // برای جلوگیری از cancel شدن درخواست‌ها، اولین درخواست‌های مهم را اول ارسال می‌کنیم
+      // To prevent requests from being cancelled, we send important requests first
       try {
-        // مرحله اول: آمار اصلی
+        // Phase 1: Main statistics
         await this.fetchDashboardStats(refresh)
 
-        // مرحله دوم: درخواست‌های کمتر مهم
+        // Phase 2: Less important requests
         await Promise.allSettled([
           this.fetchTopProducts(),
           this.fetchMonthlyRevenue(),
           this.fetchSalesComparison(),
         ])
 
-        // مرحله سوم: درخواست‌های سنگین
+        // Phase 3: Heavy requests
         await Promise.allSettled([
           this.fetchRecentOrders(),
           this.fetchManagerPerformance(),

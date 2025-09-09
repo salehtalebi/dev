@@ -15,7 +15,7 @@
                 >
                   <VIcon icon="bx-arrow-back" />
                 </VBtn>
-                <span class="text-h4">جزئیات سفارش #{{ orderId }}</span>
+                <span class="text-h4">Order Details #{{ orderId }}</span>
               </VCol>
               <VCol cols="12" md="6" class="text-end">
                 <VSelect
@@ -23,7 +23,7 @@
                   :items="orderStatuses"
                   item-title="text"
                   item-value="value"
-                  label="تغییر وضعیت"
+                  label="Change Status"
                   style="max-width: 200px"
                   class="d-inline-block"
                   @update:model-value="updateStatus"
@@ -42,7 +42,7 @@
         color="primary"
         indeterminate
       />
-      <p class="mt-4">در حال بارگذاری...</p>
+      <p class="mt-4">Loading...</p>
     </div>
 
     <!-- Order Details -->
@@ -51,24 +51,24 @@
         <!-- Order Info -->
         <VCol cols="12" md="8">
           <VCard class="mb-6">
-            <VCardTitle>اطلاعات سفارش</VCardTitle>
+            <VCardTitle>Order Information</VCardTitle>
             <VCardText>
               <VRow>
                 <VCol cols="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">شماره سفارش</div>
+                    <div class="text-caption text-medium-emphasis">Order Number</div>
                     <div class="font-weight-bold">#{{ order.id }}</div>
                   </div>
                 </VCol>
                 <VCol cols="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">تاریخ سفارش</div>
+                    <div class="text-caption text-medium-emphasis">Order Date</div>
                     <div>{{ formatDate(order.date_created) }}</div>
                   </div>
                 </VCol>
                 <VCol cols="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">وضعیت</div>
+                    <div class="text-caption text-medium-emphasis">Status</div>
                     <VChip
                       :color="getStatusColor(order.status)"
                       size="small"
@@ -80,7 +80,7 @@
                 </VCol>
                 <VCol cols="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">مبلغ کل</div>
+                    <div class="text-caption text-medium-emphasis">Total Amount</div>
                     <div class="text-h6 text-success">${{ parseFloat(order.total).toFixed(2) }}</div>
                   </div>
                 </VCol>
@@ -90,17 +90,15 @@
 
           <!-- Order Items -->
           <VCard class="mb-6">
-            <VCardTitle>آیتم‌های سفارش</VCardTitle>
+            <VCardTitle>Order Items</VCardTitle>
             <VCardText>
               <VTable>
-                <thead>
-                  <tr>
-                    <th>محصول</th>
-                    <th>تعداد</th>
-                    <th>قیمت واحد</th>
-                    <th>جمع</th>
-                  </tr>
-                </thead>
+                                  <thead>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
+                  </thead>
                 <tbody>
                   <tr v-for="item in order.line_items" :key="item.id">
                     <td>
@@ -123,24 +121,24 @@
               <VRow class="justify-end">
                 <VCol cols="12" md="6">
                   <div class="d-flex justify-space-between mb-2">
-                    <span>جمع فرعی:</span>
+                    <span>Subtotal:</span>
                     <span>${{ parseFloat(order.subtotal || 0).toFixed(2) }}</span>
                   </div>
                   <div v-if="order.total_tax && parseFloat(order.total_tax) > 0" class="d-flex justify-space-between mb-2">
-                    <span>مالیات:</span>
+                    <span>Tax:</span>
                     <span>${{ parseFloat(order.total_tax).toFixed(2) }}</span>
                   </div>
                   <div v-if="order.shipping_total && parseFloat(order.shipping_total) > 0" class="d-flex justify-space-between mb-2">
-                    <span>هزینه ارسال:</span>
+                    <span>Shipping Cost:</span>
                     <span>${{ parseFloat(order.shipping_total).toFixed(2) }}</span>
                   </div>
                   <div v-if="order.discount_total && parseFloat(order.discount_total) > 0" class="d-flex justify-space-between mb-2 text-success">
-                    <span>تخفیف:</span>
+                    <span>Discount:</span>
                     <span>-${{ parseFloat(order.discount_total).toFixed(2) }}</span>
                   </div>
                   <VDivider class="my-2" />
                   <div class="d-flex justify-space-between text-h6 font-weight-bold">
-                    <span>مجموع:</span>
+                    <span>Total:</span>
                     <span>${{ parseFloat(order.total).toFixed(2) }}</span>
                   </div>
                 </VCol>
@@ -153,7 +151,7 @@
         <VCol cols="12" md="4">
           <!-- Customer Info -->
           <VCard class="mb-6">
-            <VCardTitle>اطلاعات مشتری</VCardTitle>
+            <VCardTitle>Customer Information</VCardTitle>
             <VCardText>
               <div class="mb-4">
                 <div class="font-weight-bold">{{ order.billing.first_name }} {{ order.billing.last_name }}</div>
@@ -167,14 +165,14 @@
                 size="small"
                 @click="viewCustomer"
               >
-                مشاهده پروفایل مشتری
+                View Customer Profile
               </VBtn>
             </VCardText>
           </VCard>
 
           <!-- Billing Address -->
           <VCard class="mb-6">
-            <VCardTitle>آدرس صورتحساب</VCardTitle>
+            <VCardTitle>Billing Address</VCardTitle>
             <VCardText>
               <div>{{ order.billing.first_name }} {{ order.billing.last_name }}</div>
               <div v-if="order.billing.company">{{ order.billing.company }}</div>
@@ -187,7 +185,7 @@
 
           <!-- Shipping Address -->
           <VCard v-if="order.shipping && Object.keys(order.shipping).length">
-            <VCardTitle>آدرس ارسال</VCardTitle>
+            <VCardTitle>Shipping Address</VCardTitle>
             <VCardText>
               <div>{{ order.shipping.first_name }} {{ order.shipping.last_name }}</div>
               <div v-if="order.shipping.company">{{ order.shipping.company }}</div>
@@ -204,7 +202,7 @@
       <VRow v-if="order.customer_note">
         <VCol cols="12">
           <VCard>
-            <VCardTitle>یادداشت مشتری</VCardTitle>
+            <VCardTitle>Customer Notes</VCardTitle>
             <VCardText>
               {{ order.customer_note }}
             </VCardText>

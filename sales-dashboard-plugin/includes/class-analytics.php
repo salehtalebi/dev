@@ -360,7 +360,7 @@ class Sales_Dashboard_Analytics {
      */
     public function get_top_products($request) {
         try {
-            $period = $request->get_param('period') ?: 'month';
+            $period = $request->get_param('period') ?: 'year';
             $limit = min($request->get_param('limit') ?: 10, 10); // Limit to max 10 products
             
             // Get orders for current month only (less memory usage)

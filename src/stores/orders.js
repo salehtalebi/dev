@@ -56,13 +56,13 @@ export const useOrdersStore = defineStore('orders', {
     },
 
     orderStatuses: () => [
-      { value: 'pending', text: 'در انتظار پرداخت', color: 'warning' },
-      { value: 'processing', text: 'در حال پردازش', color: 'info' },
-      { value: 'on-hold', text: 'در انتظار', color: 'secondary' },
-      { value: 'completed', text: 'تکمیل شده', color: 'success' },
-      { value: 'cancelled', text: 'لغو شده', color: 'error' },
-      { value: 'refunded', text: 'بازپرداخت شده', color: 'error' },
-      { value: 'failed', text: 'ناموفق', color: 'error' },
+      { value: 'pending', text: 'Pending Payment', color: 'warning' },
+      { value: 'processing', text: 'Processing', color: 'info' },
+      { value: 'on-hold', text: 'On Hold', color: 'secondary' },
+      { value: 'completed', text: 'Completed', color: 'success' },
+      { value: 'cancelled', text: 'Cancelled', color: 'error' },
+      { value: 'refunded', text: 'Refunded', color: 'error' },
+      { value: 'failed', text: 'Failed', color: 'error' },
     ],
 
     currentPage: (state) => state.pagination.page,
@@ -93,23 +93,27 @@ export const useOrdersStore = defineStore('orders', {
           ...this.buildAPIParams(),
         }
 
-        const query = new URLSearchParams(params).toString()
         const api = this._getAPI()
-        const response = await api.getOrders(params)
+        const { data, headers } = await api.getOrders(params)
+        const items = Array.isArray(data) ? data : (data?.data || [])
 
         if (refresh || page === 1) {
-          this.orders = response.data || response || []
+          this.orders = items
         } else {
-          this.orders.push(...(response.data || response || []))
+          this.orders.push(...items)
         }
 
-        // Update pagination based on response - avoid reactive loops
-        this.totalOrders = response.total || 0
-        this.pagination.totalPages = Math.ceil((response.total || 0) / this.pagination.perPage)
+        // Totals from WP-style headers
+        // Prefer WP headers; fall back to body fields if provided
+        let total = parseInt(headers.get('x-wp-total') || 'NaN')
+        let totalPages = parseInt(headers.get('x-wp-totalpages') || 'NaN')
+        if (!Number.isFinite(total)) total = parseInt(data?.total ?? '0')
+        if (!Number.isFinite(totalPages)) totalPages = parseInt(data?.pages ?? '1')
+        this.totalOrders = Number.isFinite(total) ? total : 0
+        this.pagination.totalPages = Number.isFinite(totalPages) ? totalPages : 1
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
 
-        // Only update page if different to prevent loops
         if (this.pagination.page !== page) {
           this.pagination.page = page
         }
@@ -124,12 +128,12 @@ export const useOrdersStore = defineStore('orders', {
             date_created: '2023-12-01T12:00:00',
             total: '125000',
             billing: {
-              first_name: 'علی',
-              last_name: 'رضایی',
-              email: 'ali@test.com'
+              first_name: 'John',
+              last_name: 'Doe',
+              email: 'john@test.com'
             },
             line_items: [
-              { name: 'محصول تست', quantity: 2, price: '62500' }
+              { name: 'Test Product', quantity: 2, price: '62500' }
             ]
           }
         ]
@@ -187,7 +191,19 @@ export const useOrdersStore = defineStore('orders', {
     },
 
     setFilters(filters) {
-      this.filters = { ...this.filters, ...filters }
+      // Normalize snake_case from UI to store camelCase
+      const normalized = { ...filters }
+      if (Object.prototype.hasOwnProperty.call(filters, 'account_manager')) normalized.accountManager = filters.account_manager
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_from')) normalized.dateFrom = filters.date_from
+      if (Object.prototype.hasOwnProperty.call(filters, 'date_to')) normalized.dateTo = filters.date_to
+      if (Object.prototype.hasOwnProperty.call(filters, 'min_amount')) normalized.minAmount = filters.min_amount
+      if (Object.prototype.hasOwnProperty.call(filters, 'max_amount')) normalized.maxAmount = filters.max_amount
+      if (Object.prototype.hasOwnProperty.call(filters, 'customer')) normalized.customer = filters.customer
+      if (Object.prototype.hasOwnProperty.call(filters, 'status')) normalized.status = filters.status
+      if (Object.prototype.hasOwnProperty.call(filters, 'search')) normalized.search = filters.search
+      if (Object.prototype.hasOwnProperty.call(filters, 'dateRange')) normalized.dateRange = filters.dateRange
+
+      this.filters = { ...this.filters, ...normalized }
       this.pagination.page = 1
     },
 

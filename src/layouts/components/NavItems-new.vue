@@ -25,7 +25,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
   
   <VerticalNavLink
     :item="{
-      title: 'سفارشات',
+      title: 'Orders',
       icon: 'bx-cart',
       to: '/orders',
     }"
@@ -33,7 +33,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
   
   <VerticalNavLink
     :item="{
-      title: 'مشتریان',
+      title: 'Customers',
       icon: 'bx-user',
       to: '/customers',
     }"
@@ -51,7 +51,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
   
   <!-- <VerticalNavLink
     :item="{
-      title: 'Typogلاتraphy',
+      title: 'Typography',
       icon: 'bx-message-dots',
       to: '/typography',
     }"

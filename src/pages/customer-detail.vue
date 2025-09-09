@@ -15,7 +15,7 @@
                 >
                   <VIcon icon="bx-arrow-back" />
                 </VBtn>
-                <span class="text-h4">جزئیات مشتری</span>
+                <span class="text-h4">Customer Details</span>
               </VCol>
               <VCol cols="12" md="6" class="text-end">
                 <VBtn
@@ -24,7 +24,7 @@
                   @click="viewOrders"
                 >
                   <VIcon start icon="bx-cart" />
-                  مشاهده سفارشات
+                  View Orders
                 </VBtn>
               </VCol>
             </VRow>
@@ -40,7 +40,7 @@
         color="primary"
         indeterminate
       />
-      <p class="mt-4">در حال بارگذاری...</p>
+      <p class="mt-4">Loading...</p>
     </div>
 
     <!-- Customer Details -->
@@ -74,7 +74,7 @@
                   size="small"
                   variant="tonal"
                 >
-                  {{ customer.orders_count || 0 }} سفارش
+                  {{ customer.orders_count || 0 }} orders
                 </VChip>
                 <VChip
                   color="success"
@@ -86,40 +86,40 @@
               </div>
 
               <div class="text-caption text-medium-emphasis">
-                عضو از: {{ formatDate(customer.date_created) }}
+                Member since: {{ formatDate(customer.date_created) }}
               </div>
             </VCardText>
           </VCard>
 
           <!-- Customer Stats -->
           <VCard v-if="customerStats">
-            <VCardTitle>آمار مشتری</VCardTitle>
+            <VCardTitle>Customer Statistics</VCardTitle>
             <VCardText>
               <!-- Basic Stats -->
               <div class="mb-6">
-                <h3 class="text-h6 mb-4">آمار کلی</h3>
+                <h3 class="text-h6 mb-4">General Statistics</h3>
                 
                 <VRow>
                   <VCol cols="12" md="6">
                     <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">تعداد کل سفارشات:</span>
+                      <span class="text-body-2">Total Orders:</span>
                       <VChip color="primary" variant="tonal">{{ customerStats?.total_orders || 0 }}</VChip>
                     </div>
                     
                     <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">مجموع خرید:</span>
+                      <span class="text-body-2">Total Spent:</span>
                       <span class="font-weight-bold text-success">${{ formatCurrency(customerStats?.total_spent || 0) }}</span>
                     </div>
                     
                     <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">میانگین ارزش سفارش:</span>
+                      <span class="text-body-2">Average Order Value:</span>
                       <span class="font-weight-bold">${{ formatCurrency(customerStats?.average_order_value || 0) }}</span>
                     </div>
                   </VCol>
                   
                   <VCol cols="12" md="6">
                     <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">رشد نسبت به ماه قبل:</span>
+                      <span class="text-body-2">Growth vs Last Month:</span>
                       <VChip
                         :color="(customerStats?.growth_percentage || 0) >= 0 ? 'success' : 'error'"
                         size="small"
@@ -130,7 +130,7 @@
                     </div>
                     
                     <div v-if="customerStats?.last_order_date" class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">آخرین سفارش:</span>
+                      <span class="text-body-2">Last Order:</span>
                       <span class="text-caption">{{ formatDate(customerStats.last_order_date) }}</span>
                     </div>
                   </VCol>
@@ -139,16 +139,16 @@
               
               <!-- Monthly Stats Chart -->
               <div v-if="customerStats?.monthly_orders?.length" class="mb-6">
-                <h3 class="text-h6 mb-4">آمار ماهانه (12 ماه گذشته)</h3>
+                <h3 class="text-h6 mb-4">Monthly Statistics (Last 12 Months)</h3>
                 <VRow>
                   <VCol cols="12">
                     <div class="pa-4 bg-grey-lighten-4 rounded">
                       <VTable density="compact">
                         <thead>
                           <tr>
-                            <th>ماه</th>
-                            <th>تعداد سفارش</th>
-                            <th>مبلغ خرید</th>
+                            <th>Month</th>
+                            <th>Orders Count</th>
+                            <th>Amount Spent</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -159,7 +159,7 @@
                                 {{ monthData.orders_count }}
                               </VChip>
                             </td>
-                            <td class="font-weight-bold">${{ formatCurrency(monthData.total_spent) }}</td>
+                            <td class="font-weight-medium">${{ formatCurrency(monthData.total_spent) }}</td>
                           </tr>
                         </tbody>
                       </VTable>
@@ -175,18 +175,18 @@
         <VCol cols="12" md="8">
           <!-- Contact Information -->
           <VCard class="mb-6">
-            <VCardTitle>اطلاعات تماس</VCardTitle>
+            <VCardTitle>Contact Information</VCardTitle>
             <VCardText>
               <VRow>
                 <VCol cols="12" md="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">ایمیل</div>
+                    <div class="text-caption text-medium-emphasis">Email</div>
                     <div>{{ customer.email }}</div>
                   </div>
                 </VCol>
                 <VCol cols="12" md="6">
                   <div class="mb-4">
-                    <div class="text-caption text-medium-emphasis">تلفن</div>
+                    <div class="text-caption text-medium-emphasis">Phone</div>
                     <div>{{ customer.billing?.phone || '-' }}</div>
                   </div>
                 </VCol>
@@ -194,7 +194,7 @@
               
               <!-- Billing Address -->
               <div v-if="customer.billing">
-                <h6 class="text-h6 mb-3">آدرس صورتحساب</h6>
+                <h6 class="text-h6 mb-3">Billing Address</h6>
                 <div>{{ customer.billing.first_name }} {{ customer.billing.last_name }}</div>
                 <div v-if="customer.billing.company">{{ customer.billing.company }}</div>
                 <div>{{ customer.billing.address_1 }}</div>
@@ -205,89 +205,72 @@
             </VCardText>
           </VCard>
 
-          <!-- Customer Orders with Pagination -->
-          <VCard>
-            <VCardTitle class="d-flex justify-space-between align-center">
-              <span>سفارشات مشتری</span>
-              <div class="d-flex align-center gap-2">
-                <VSelect
-                  v-model="ordersPerPage"
-                  :items="[10, 20, 50, 100]"
-                  label="تعداد در صفحه"
-                  variant="outlined"
-                  density="compact"
-                  style="width: 120px"
-                  @update:model-value="loadCustomerOrders"
-                />
-              </div>
-            </VCardTitle>
-            <VCardText>
-              <div v-if="!customerOrders || customerOrders.length === 0" class="text-center py-8">
-                <p class="text-body-1 text-medium-emphasis">هیچ سفارشی یافت نشد</p>
-              </div>
-              
-              <div v-else>
-                <VTable>
-                  <thead>
-                    <tr>
-                      <th>شماره سفارش</th>
-                      <th>تاریخ</th>
-                      <th>وضعیت</th>
-                      <th>مبلغ</th>
-                      <th>عملیات</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="order in customerOrders" :key="order.id">
-                      <td>
-                        <VChip
-                          color="primary"
-                          variant="outlined"
-                          size="small"
-                          @click="viewOrder(order.id)"
-                          class="cursor-pointer"
-                        >
-                          #{{ order.id }}
-                        </VChip>
-                      </td>
-                      <td>{{ formatDate(order.date_created) }}</td>
-                      <td>
-                        <VChip
-                          :color="getStatusColor(order.status)"
-                          size="small"
-                          variant="tonal"
-                        >
-                          {{ getStatusText(order.status) }}
-                        </VChip>
-                      </td>
-                      <td class="font-weight-bold">${{ parseFloat(order.total || 0).toFixed(2) }}</td>
-                      <td>
-                        <VBtn
-                          icon
-                          size="small"
-                          variant="text"
-                          @click="viewOrder(order.id)"
-                        >
-                          <VIcon icon="bx-show" />
+              <!-- Customer Orders with Pagination -->
+              <VCard>
+                <VCardTitle class="d-flex justify-space-between align-center">
+                  <span>Customer Orders</span>
+                  <div class="d-flex align-center gap-2">
+                    <VSelect
+                      v-model="ordersPerPage"
+                      :items="[10, 20, 50, 100]"
+                      label="Items per Page"
+                      variant="outlined"
+                      density="compact"
+                      style="width: 120px"
+                      @update:model-value="loadCustomerOrders"
+                    />
+                  </div>
+                </VCardTitle>
+                <VCardText>
+                  <div v-if="!customerOrders || customerOrders.length === 0" class="text-center py-8">
+                    <p class="text-body-1 text-medium-emphasis">No orders found</p>
+                  </div>
+
+                  <div v-else>
+                    <VDataTable
+                      v-model:page="ordersPagination.currentPage"
+                      v-model:items-per-page="ordersPerPage"
+                      :headers="orderHeaders"
+                      :items="customerOrders"
+                      :items-length="ordersPagination.totalOrders"
+                      class="text-no-wrap"
+                      @update:options="() => loadCustomerOrders()"
+                    >
+                      <template #item.id="{ item }">
+                        <VBtn variant="text" size="small" @click="viewOrder(item.id)">
+                          #{{ item.id }}
                         </VBtn>
-                      </td>
-                    </tr>
-                  </tbody>
-                </VTable>
-                
-                <!-- Pagination with VDataTableFooter -->
-                <VDataTableFooter
-                  v-model:items-per-page="ordersPerPage"
-                  :items-per-page-options="itemsPerPageOptions"
-                  :page="ordersPagination.currentPage"
-                  :items-length="ordersPagination.totalOrders"
-                  show-current-page
-                  @update:items-per-page="updateOrdersItemsPerPage"
-                  @update:page="updateOrdersPage"
-                />
-              </div>
-            </VCardText>
-          </VCard>
+                      </template>
+
+                      <template #item.status="{ item }">
+                        <VChip :color="getStatusColor(item.status)" size="small" variant="tonal">
+                          {{ getStatusText(item.status) }}
+                        </VChip>
+                      </template>
+
+                      <template #item.total="{ item }">
+                        <span class="font-weight-medium">${{ parseFloat(item.total || 0).toFixed(2) }}</span>
+                      </template>
+
+                      <template #item.date_created="{ item }">
+                        <span class="text-body-2">{{ formatDate(item.date_created) }}</span>
+                      </template>
+
+                      <template #bottom>
+                        <VDataTableFooter
+                          :items-per-page-options="itemsPerPageOptions"
+                          :items-per-page="ordersPerPage"
+                          :page="ordersPagination.currentPage"
+                          :items-length="ordersPagination.totalOrders"
+                          @update:items-per-page="updateOrdersItemsPerPage"
+                          @update:page="updateOrdersPage"
+                        />
+                      </template>
+                    </VDataTable>
+                  </div>
+                </VCardText>
+              </VCard>
+          
         </VCol>
       </VRow>
     </div>
@@ -310,7 +293,8 @@ const ordersPerPage = ref(20)
 const ordersPagination = ref({
   currentPage: 1,
   totalPages: 1,
-  totalOrders: 0
+  totalOrders: 0,
+  pages: 1
 })
 
 // Items per page options
@@ -323,9 +307,17 @@ const itemsPerPageOptions = [
 
 // Computed
 const customer = computed(() => customersStore.currentCustomer)
-const customerOrders = computed(() => customersStore.customerOrders)
+const customerOrders = computed(() => Array.isArray(customersStore.customerOrders) ? customersStore.customerOrders : [])
 const customerStats = computed(() => customersStore.customerStats)
 const isLoading = computed(() => customersStore.isLoading)
+
+// Table headers
+const orderHeaders = [
+  { title: 'Order Number', key: 'id', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Total Amount', key: 'total', sortable: true },
+  { title: 'Date', key: 'date_created', sortable: true },
+]
 
 // Methods
 const fetchCustomer = async () => {
@@ -353,6 +345,7 @@ const loadCustomerOrders = async () => {
       ordersPagination.value = {
         currentPage: ordersPagination.value.currentPage,
         totalPages: result.pages || 1,
+        pages: result.pages || 1,
         totalOrders: result.total || 0
       }
     }
@@ -399,8 +392,8 @@ const formatMonth = (monthString) => {
   if (!monthString) return ''
   const [year, month] = monthString.split('-')
   const monthNames = [
-    'ژانویه', 'فوریه', 'مارس', 'آوریل', 'می', 'ژوئن',
-    'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
   ]
   return `${monthNames[parseInt(month) - 1]} ${year}`
 }
@@ -420,13 +413,13 @@ const getStatusColor = (status) => {
 
 const getStatusText = (status) => {
   const statusTexts = {
-    'pending': 'در انتظار پرداخت',
-    'processing': 'در حال پردازش',
-    'on-hold': 'در انتظار',
-    'completed': 'تکمیل شده',
-    'cancelled': 'لغو شده',
-    'refunded': 'بازگشت داده شده',
-    'failed': 'ناموفق'
+    'pending': 'Pending Payment',
+    'processing': 'Processing',
+    'on-hold': 'On Hold',
+    'completed': 'Completed',
+    'cancelled': 'Cancelled',
+    'refunded': 'Refunded',
+    'failed': 'Failed'
   }
   return statusTexts[status] || status
 }
