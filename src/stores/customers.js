@@ -6,6 +6,12 @@ export const useCustomersStore = defineStore('customers', {
     customers: [],
     currentCustomer: null,
     customerOrders: [],
+    customerOrdersPagination: {
+      page: 1,
+      perPage: 20,
+      totalOrders: 0,
+      pages: 1,
+    },
     customerStats: null,
     totalCustomers: 0,
     loading: {
@@ -83,26 +89,47 @@ export const useCustomersStore = defineStore('customers', {
 
         const api = this._getAPI()
         const { data, headers } = await api.getCustomers(params)
+        console.debug('[customers] fetchCustomers params:', params)
         const items = Array.isArray(data) ? data : (data?.data || [])
 
         if (refresh || page === 1) {
           this.customers = items
         } else {
-          this.customers.push(...items)
+          this.customers = items
         }
 
-        let total = parseInt(headers.get('x-wp-total') || 'NaN')
-        let totalPages = parseInt(headers.get('x-wp-totalpages') || 'NaN')
-        if (!Number.isFinite(total)) total = parseInt(data?.total ?? '0')
-        if (!Number.isFinite(totalPages)) totalPages = parseInt(data?.pages ?? '1')
+        // Prefer JSON body meta; fallback to WP headers if needed
+        let total = Number.parseInt(data?.total ?? 'NaN')
+        if (!Number.isFinite(total)) {
+          const headerTotal = headers?.get?.('x-wp-total') || headers?.get?.('X-WP-Total')
+          total = Number.parseInt(headerTotal ?? '0')
+        }
+
+        let totalPages = Number.parseInt(data?.pages ?? 'NaN')
+        if (!Number.isFinite(totalPages)) {
+          const headerPages = headers?.get?.('x-wp-totalpages') || headers?.get?.('X-WP-TotalPages')
+          totalPages = Number.parseInt(headerPages ?? '1')
+        }
+
         this.totalCustomers = Number.isFinite(total) ? total : 0
         this.pagination.totalPages = Number.isFinite(totalPages) ? totalPages : 1
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
 
+        // Adjust current page if it exceeds total pages
+        if (this.pagination.page > this.pagination.totalPages) {
+          this.pagination.page = this.pagination.totalPages || 1
+        }
+
         if (this.pagination.page !== page) {
           this.pagination.page = page
         }
+        console.debug('[customers] totals:', {
+          total: this.totalCustomers,
+          totalPages: this.pagination.totalPages,
+          page: this.pagination.page,
+          perPage: this.pagination.perPage,
+        })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch customers:', error)
@@ -186,10 +213,29 @@ export const useCustomersStore = defineStore('customers', {
         }
         const api = this._getAPI()
         const { data, headers } = await api.getOrders(params)
+        console.debug('[customers] fetchCustomerOrders params:', params)
         this.customerOrders = Array.isArray(data) ? data : (data?.data || [])
-        const total = parseInt(headers.get('x-wp-total') || '0')
-        const pages = parseInt(headers.get('x-wp-totalpages') || '1')
-        return { data: this.customerOrders, total, pages }
+
+        // Derive totals from body, fallback to WP headers
+        let total = Number.parseInt(data?.total ?? 'NaN')
+        if (!Number.isFinite(total)) {
+          const headerTotal = headers?.get?.('x-wp-total') || headers?.get?.('X-WP-Total')
+          total = Number.parseInt(headerTotal ?? '0')
+        }
+        let pages = Number.parseInt(data?.pages ?? 'NaN')
+        if (!Number.isFinite(pages)) {
+          const headerPages = headers?.get?.('x-wp-totalpages') || headers?.get?.('X-WP-TotalPages')
+          pages = Number.parseInt(headerPages ?? '1')
+        }
+
+        this.customerOrdersPagination = {
+          page,
+          perPage,
+          totalOrders: Number.isFinite(total) ? total : 0,
+          pages: Number.isFinite(pages) ? pages : 1,
+        }
+        console.debug('[customers] customerOrders totals:', this.customerOrdersPagination)
+        return { data: this.customerOrders, total: this.customerOrdersPagination.totalOrders, pages: this.customerOrdersPagination.pages }
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch customer orders:', error)
@@ -205,7 +251,13 @@ export const useCustomersStore = defineStore('customers', {
             ]
           }
         ]
-        return this.customerOrders
+        this.customerOrdersPagination = {
+          page,
+          perPage,
+          totalOrders: this.customerOrders.length,
+          pages: 1,
+        }
+        return { data: this.customerOrders, total: this.customerOrdersPagination.totalOrders, pages: this.customerOrdersPagination.pages }
       } finally {
         this.loading.detail = false
       }

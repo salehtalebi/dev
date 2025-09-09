@@ -142,17 +142,20 @@
             </div>
 
             <!-- Table -->
-            <VDataTable
+            <VDataTableServer
               v-else
-              v-model:items-per-page="itemsPerPage"
-              v-model:page="currentPage"
+              :key="`${totalOrders}-${itemsPerPage}-${currentPage}`"
+              :items-per-page="itemsPerPage"
+              :page="currentPage"
               :headers="headers"
               :items="orders"
               :loading="isLoading"
               :items-length="totalOrders"
+              :items-per-page-options="itemsPerPageOptions"
               item-value="id"
+              show-current-page
               class="elevation-1"
-              @update:options="updateOptions"
+              @update:options="onTableOptionsUpdate"
             >
               <!-- Order ID -->
               <template #item.id="{ item }">
@@ -214,18 +217,17 @@
                 </VBtn>
               </template>
 
-              <!-- Footer with VDataTableFooter -->
               <template #bottom>
                 <VDataTableFooter
                   :items-per-page-options="itemsPerPageOptions"
                   :items-per-page="itemsPerPage"
                   :page="currentPage"
                   :items-length="totalOrders"
-                  @update:items-per-page="updateItemsPerPage"
+                  @update:itemsPerPage="updateItemsPerPage"
                   @update:page="updatePage"
                 />
               </template>
-            </VDataTable>
+            </VDataTableServer>
           </VCardText>
         </VCard>
       </VCol>
@@ -296,34 +298,49 @@ const pageText = computed(() => {
   return `${start}-${end} of ${totalOrders.value}`
 })
 
-const updateOptions = (options) => {
+const onTableOptionsUpdate = async (options) => {
   const pageChanged = currentPage.value !== options.page
   const itemsPerPageChanged = itemsPerPage.value !== options.itemsPerPage
+  console.debug('[orders] options update:', options, { pageChanged, itemsPerPageChanged, currentPage: currentPage.value, itemsPerPage: itemsPerPage.value })
   
   if (pageChanged) currentPage.value = options.page
-  if (itemsPerPageChanged) itemsPerPage.value = options.itemsPerPage
+  if (itemsPerPageChanged) {
+    itemsPerPage.value = options.itemsPerPage
+    currentPage.value = 1
+  }
   
   if (pageChanged) ordersStore.setPage(options.page)
-  if (itemsPerPageChanged) ordersStore.setPerPage(options.itemsPerPage)
+  if (itemsPerPageChanged) {
+    ordersStore.setPerPage(options.itemsPerPage)
+    ordersStore.setPage(1)
+  }
   
+  // Avoid redundant fetch on initial sync when nothing actually changed
   if (pageChanged || itemsPerPageChanged) {
-    fetchOrders()
+    const targetPage = itemsPerPageChanged ? 1 : options.page
+  console.debug('[orders] fetching with target page:', targetPage)
+    await fetchOrders(true, targetPage)
+    // Ensure current page is synced after fetch
+    currentPage.value = ordersStore.currentPage
   }
 }
 
-const updateItemsPerPage = (newItemsPerPage) => {
+// Handled via onTableOptionsUpdate only
+
+const updateItemsPerPage = async (newItemsPerPage) => {
   if (itemsPerPage.value !== newItemsPerPage) {
     itemsPerPage.value = newItemsPerPage
     ordersStore.setPerPage(newItemsPerPage)
-    fetchOrders()
+    ordersStore.setPage(1)
+    await fetchOrders(true, 1)
   }
 }
 
-const updatePage = (newPage) => {
+const updatePage = async (newPage) => {
   if (currentPage.value !== newPage) {
     // Avoid reactive loop by checking if the page has actually changed
-    ordersStore.setPage(newPage)
-    fetchOrders()
+  ordersStore.setPage(newPage)
+  await fetchOrders(true, newPage)
   }
 }
 
@@ -352,8 +369,9 @@ const headers = [
 ]
 
 // Methods
-const fetchOrders = () => {
-  ordersStore.fetchOrders(ordersStore.pagination.page)
+const fetchOrders = (refresh = false, pageOverride = null) => {
+  const page = pageOverride ?? ordersStore.pagination.page
+  ordersStore.fetchOrders(page, refresh)
 }
 
 const applyFilters = () => {
@@ -386,7 +404,7 @@ const applyFilters = () => {
   }
   
   ordersStore.setFilters(filters)
-  fetchOrders()
+  fetchOrders(true)
 }
 
 const clearFilters = () => {
@@ -401,7 +419,7 @@ const clearFilters = () => {
     max_amount: ''
   }
   ordersStore.clearFilters()
-  fetchOrders()
+  fetchOrders(true)
 }
 
 const viewOrder = (orderId) => {

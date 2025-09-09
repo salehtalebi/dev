@@ -77,7 +77,7 @@
                 </VBtn>
               </VCol>
             </VRow>
-            
+
             <!-- Custom Date Range -->
             <VRow v-if="localFilters.dateRange === 'custom'">
               <VCol cols="12" md="3">
@@ -132,17 +132,20 @@
             </div>
 
             <!-- Table -->
-            <VDataTable
+            <VDataTableServer
               v-else
-              v-model:items-per-page="itemsPerPage"
-              v-model:page="currentPage"
+              :key="`${totalCustomers}-${itemsPerPage}-${currentPage}`"
+              :items-per-page="itemsPerPage"
+              :page="currentPage"
               :headers="headers"
               :items="customers"
               :loading="isLoading"
               item-value="id"
               class="elevation-1"
               :items-length="totalCustomers"
-              @update:options="updateOptions"
+              :items-per-page-options="itemsPerPageOptions"
+              show-current-page
+              @update:options="onTableOptionsUpdate"
             >
               <!-- Customer Name -->
               <template #item.name="{ item }">
@@ -214,11 +217,12 @@
                   :items-per-page="itemsPerPage"
                   :page="currentPage"
                   :items-length="totalCustomers"
-                  @update:items-per-page="updateItemsPerPage"
+                  show-current-page
+                  @update:itemsPerPage="updateItemsPerPage"
                   @update:page="updatePage"
                 />
               </template>
-            </VDataTable>
+            </VDataTableServer>
           </VCardText>
         </VCard>
       </VCol>
@@ -280,41 +284,56 @@ const itemsPerPageOptions = [
 
 const pageText = computed(() => {
   if (totalCustomers.value === 0) return 'No customers found'
-  
+
   const start = (currentPage.value - 1) * itemsPerPage.value + 1
   const end = Math.min(currentPage.value * itemsPerPage.value, totalCustomers.value)
-  
+
   return `${start}-${end} of ${totalCustomers.value}`
 })
 
-const updateOptions = (options) => {
+const onTableOptionsUpdate = async (options) => {
   const pageChanged = currentPage.value !== options.page
   const itemsPerPageChanged = itemsPerPage.value !== options.itemsPerPage
-  
+  console.debug('[customers] options update:', options, { pageChanged, itemsPerPageChanged, currentPage: currentPage.value, itemsPerPage: itemsPerPage.value })
+
   if (pageChanged) currentPage.value = options.page
-  if (itemsPerPageChanged) itemsPerPage.value = options.itemsPerPage
-  
+  if (itemsPerPageChanged) {
+    itemsPerPage.value = options.itemsPerPage
+    currentPage.value = 1
+  }
+
   if (pageChanged) customersStore.setPage(options.page)
-  if (itemsPerPageChanged) customersStore.setPerPage(options.itemsPerPage)
-  
+  if (itemsPerPageChanged) {
+    customersStore.setPerPage(options.itemsPerPage)
+    customersStore.setPage(1)
+  }
+
+  // Avoid redundant fetch on initial sync when nothing actually changed
   if (pageChanged || itemsPerPageChanged) {
-    fetchCustomers()
+    const targetPage = itemsPerPageChanged ? 1 : options.page
+  console.debug('[customers] fetching with target page:', targetPage)
+    await fetchCustomers(true, targetPage)
+    currentPage.value = customersStore.currentPage
   }
 }
+// Handled via onTableOptionsUpdate only
 
-const updateItemsPerPage = (newItemsPerPage) => {
+
+const updateItemsPerPage = async (newItemsPerPage) => {
   if (itemsPerPage.value !== newItemsPerPage) {
     itemsPerPage.value = newItemsPerPage
     customersStore.setPerPage(newItemsPerPage)
-    fetchCustomers()
+    // Reset to first page when per page changes
+    customersStore.setPage(1)
+    await fetchCustomers(true, 1)
   }
 }
 
-const updatePage = (newPage) => {
+const updatePage = async (newPage) => {
   if (currentPage.value !== newPage) {
     // Avoid reactive loop by checking if the page has actually changed
-    customersStore.setPage(newPage)
-    fetchCustomers()
+  customersStore.setPage(newPage)
+  await fetchCustomers(true, newPage)
   }
 }
 
@@ -342,15 +361,16 @@ const headers = [
 ]
 
 // Methods
-const fetchCustomers = () => {
-  customersStore.fetchCustomers(customersStore.pagination.page)
+const fetchCustomers = (refresh = false, pageOverride = null) => {
+  const page = pageOverride ?? customersStore.pagination.page
+  customersStore.fetchCustomers(page, refresh)
 }
 
 const applyFilters = () => {
   // Handle date range presets
   const today = new Date()
   const filters = { ...localFilters.value }
-  
+
   if (localFilters.value.dateRange && localFilters.value.dateRange !== 'custom') {
     switch (localFilters.value.dateRange) {
       case 'this_week':
@@ -374,9 +394,9 @@ const applyFilters = () => {
         break
     }
   }
-  
+
   customersStore.setFilters(filters)
-  fetchCustomers()
+  fetchCustomers(true)
 }
 
 const clearFilters = () => {
@@ -390,7 +410,7 @@ const clearFilters = () => {
     total_spent_max: ''
   }
   customersStore.clearFilters()
-  fetchCustomers()
+  fetchCustomers(true)
 }
 
 const viewCustomer = (customerId) => {
@@ -411,7 +431,7 @@ const exportCustomers = async () => {
   try {
     // Get current filters for export
     const exportFilters = { ...localFilters.value }
-    
+
     // Handle date range presets for export
     const today = new Date()
     if (localFilters.value.dateRange && localFilters.value.dateRange !== 'custom') {
@@ -437,7 +457,7 @@ const exportCustomers = async () => {
           break
       }
     }
-    
+
     const result = await exportCustomersToFile(exportFilters)
     if (result.success) {
       // Show success message (you can add a toast notification here)
@@ -451,8 +471,19 @@ const exportCustomers = async () => {
   }
 }
 
+// Check for URL parameters
+const checkUrlParameters = () => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const customerParam = urlParams.get('customer')
+  if (customerParam) {
+    localFilters.value.customer = customerParam
+    customersStore.setFilters({ customer: customerParam })
+  }
+}
+
 // Initialize
 onMounted(() => {
+  checkUrlParameters()
   fetchCustomers()
 })
 </script>

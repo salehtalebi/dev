@@ -95,28 +95,45 @@ export const useOrdersStore = defineStore('orders', {
 
         const api = this._getAPI()
         const { data, headers } = await api.getOrders(params)
+        console.debug('[orders] fetchOrders params:', params)
         const items = Array.isArray(data) ? data : (data?.data || [])
 
         if (refresh || page === 1) {
           this.orders = items
         } else {
-          this.orders.push(...items)
+          this.orders = items
         }
 
-        // Totals from WP-style headers
-        // Prefer WP headers; fall back to body fields if provided
-        let total = parseInt(headers.get('x-wp-total') || 'NaN')
-        let totalPages = parseInt(headers.get('x-wp-totalpages') || 'NaN')
-        if (!Number.isFinite(total)) total = parseInt(data?.total ?? '0')
-        if (!Number.isFinite(totalPages)) totalPages = parseInt(data?.pages ?? '1')
+        // Prefer JSON body meta; fallback to WP headers if needed
+        let total = Number.parseInt(data?.total ?? 'NaN')
+        if (!Number.isFinite(total)) {
+          const headerTotal = headers?.get?.('x-wp-total') || headers?.get?.('X-WP-Total')
+          total = Number.parseInt(headerTotal ?? '0')
+        }
+        let totalPages = Number.parseInt(data?.pages ?? 'NaN')
+        if (!Number.isFinite(totalPages)) {
+          const headerPages = headers?.get?.('x-wp-totalpages') || headers?.get?.('X-WP-TotalPages')
+          totalPages = Number.parseInt(headerPages ?? '1')
+        }
         this.totalOrders = Number.isFinite(total) ? total : 0
         this.pagination.totalPages = Number.isFinite(totalPages) ? totalPages : 1
         this.pagination.hasNext = page < this.pagination.totalPages
         this.pagination.hasPrev = page > 1
 
+        // Adjust current page if it exceeds total pages
+        if (this.pagination.page > this.pagination.totalPages) {
+          this.pagination.page = this.pagination.totalPages || 1
+        }
+
         if (this.pagination.page !== page) {
           this.pagination.page = page
         }
+        console.debug('[orders] totals:', {
+          total: this.totalOrders,
+          totalPages: this.pagination.totalPages,
+          page: this.pagination.page,
+          perPage: this.pagination.perPage,
+        })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch orders:', error)

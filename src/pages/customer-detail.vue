@@ -234,7 +234,6 @@
                       :items="customerOrders"
                       :items-length="ordersPagination.totalOrders"
                       class="text-no-wrap"
-                      @update:options="() => loadCustomerOrders()"
                     >
                       <template #item.id="{ item }">
                         <VBtn variant="text" size="small" @click="viewOrder(item.id)">
@@ -262,7 +261,7 @@
                           :items-per-page="ordersPerPage"
                           :page="ordersPagination.currentPage"
                           :items-length="ordersPagination.totalOrders"
-                          @update:items-per-page="updateOrdersItemsPerPage"
+                          @update:itemsPerPage="updateOrdersItemsPerPage"
                           @update:page="updateOrdersPage"
                         />
                       </template>
