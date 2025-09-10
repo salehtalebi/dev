@@ -360,40 +360,39 @@ class Sales_Dashboard_Analytics {
      */
     public function get_top_products($request) {
         try {
-            $period = $request->get_param('period') ?: 'year';
-            $limit = min($request->get_param('limit') ?: 10, 10); // Limit to max 10 products
-            
-            // Get orders for current month only (less memory usage)
-            $month_start = date('Y-m-01 00:00:00');
-            $month_end = date('Y-m-t 23:59:59');
-            
-            // Use paginated approach to avoid memory exhaustion
-            $orders = wc_get_orders(array(
-                'status' => array('wc-completed', 'wc-processing'),
-                'date_created' => $month_start . '...' . $month_end,
-                'limit' => 500, // Process in batches of 500
-                'return' => 'objects',
-                'paginate' => true
-            ));
-            
+            // Ignore provided period for now (requirement: show top selling products across all data)
+            $period = 'all';
+            $limit = min($request->get_param('limit') ?: 10, 50); // allow up to 50 in memory aggregation
+
+            // We'll aggregate across entire order history, but in batches to control memory.
+            // Strategy: iterate through order IDs in descending date order, accumulate stats until we've
+            // covered enough orders or hit a safety cap (e.g., 5000 orders) to avoid timeouts.
+
             $product_stats = array();
             $page = 1;
-            
+            $batch_limit = 250; // smaller batch for history scan
+            $processed_orders = 0;
+            $max_orders = 5000; // safety cap
+
             do {
                 $orders = wc_get_orders(array(
                     'status' => array('wc-completed', 'wc-processing'),
-                    'date_created' => $month_start . '...' . $month_end,
-                    'limit' => 500,
+                    'orderby' => 'date',
+                    'order' => 'DESC',
+                    'limit' => $batch_limit,
                     'page' => $page,
                     'return' => 'objects'
                 ));
-                
+
+                if (empty($orders)) break;
+
                 foreach ($orders as $order) {
+                    $processed_orders++;
                     foreach ($order->get_items() as $item) {
                         $product_id = $item->get_product_id();
                         $quantity = $item->get_quantity();
                         $total = $item->get_total();
-                        
+
                         if (!isset($product_stats[$product_id])) {
                             $product_stats[$product_id] = array(
                                 'product_id' => $product_id,
@@ -402,21 +401,19 @@ class Sales_Dashboard_Analytics {
                                 'orders_count' => 0
                             );
                         }
-                        
+
                         $product_stats[$product_id]['total_quantity'] += $quantity;
                         $product_stats[$product_id]['total_revenue'] += $total;
                         $product_stats[$product_id]['orders_count']++;
                     }
                 }
-                
+
                 $page++;
-                
-                // Clear memory after each batch
+
                 if (function_exists('gc_collect_cycles')) {
                     gc_collect_cycles();
                 }
-                
-            } while (count($orders) === 500 && $page <= 5); // Max 5 pages (2500 orders)
+            } while (count($orders) === $batch_limit && $processed_orders < $max_orders);
             
             // Sort by revenue and limit
             uasort($product_stats, function($a, $b) {
@@ -445,7 +442,8 @@ class Sales_Dashboard_Analytics {
             
             return array(
                 'top_products' => $formatted_products,
-                'period' => $period
+                'period' => $period,
+                'processed_orders' => $processed_orders
             );
             
         } catch (Exception $e) {

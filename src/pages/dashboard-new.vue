@@ -136,15 +136,46 @@
             </VBtn>
           </VCardTitle>
           <VCardText>
-            <div class="text-center py-8">
-              <p class="text-medium-emphasis">To view recent orders, go to the orders page</p>
-              <VBtn
-                color="primary"
-                size="small"
-                @click="$router.push('/orders')"
-              >
-                View Orders
-              </VBtn>
+            <div v-if="dashboardStore.loading.orders" class="text-center py-6">
+              <VProgressCircular indeterminate color="primary" />
+            </div>
+            <div v-else-if="!recentOrders.length" class="text-center py-6 text-medium-emphasis">
+              No recent orders found.
+            </div>
+            <div v-else>
+              <VTable density="comfortable" class="text-no-wrap">
+                <thead>
+                  <tr>
+                    <th class="text-left">#</th>
+                    <th class="text-left">Customer</th>
+                    <th class="text-left">Status</th>
+                    <th class="text-left">Total</th>
+                    <th class="text-left">Date</th>
+                    <th class="text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="order in recentOrders" :key="order.id">
+                    <td>
+                      <VBtn variant="text" size="x-small" @click="viewOrder(order.id)">#{{ order.id }}</VBtn>
+                    </td>
+                    <td>
+                      <div class="font-weight-medium">{{ order.billing?.first_name }} {{ order.billing?.last_name }}</div>
+                      <div class="text-caption text-medium-emphasis">{{ order.billing?.email }}</div>
+                    </td>
+                    <td>
+                      <VChip :color="getStatusColor(order.status)" size="x-small" variant="tonal">{{ getStatusText(order.status) }}</VChip>
+                    </td>
+                    <td class="font-weight-medium">${{ parseFloat(order.total || 0).toFixed(2) }}</td>
+                    <td class="text-caption">{{ formatDate(order.date_created) }}</td>
+                    <td>
+                      <VBtn icon size="x-small" variant="text" @click="viewOrder(order.id)">
+                        <VIcon icon="bx-show" />
+                      </VBtn>
+                    </td>
+                  </tr>
+                </tbody>
+              </VTable>
             </div>
           </VCardText>
         </VCard>
@@ -160,28 +191,61 @@ import AnalyticsManagerPerformance from '@/views/dashboard/AnalyticsManagerPerfo
 import AnalyticsOrderStatistics from '@/views/dashboard/AnalyticsOrderStatistics.vue'
 import AnalyticsTopProducts from '@/views/dashboard/AnalyticsTopProducts.vue'
 import AnalyticsTotalRevenue from '@/views/dashboard/AnalyticsTotalRevenue.vue'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const dashboardStore = useDashboardStore()
-const { dashboardStats, loading } = useAnalytics()
+const { dashboardStats } = useAnalytics()
 
 // Computed
 const dashboardData = computed(() => dashboardStats.value)
+const recentOrders = computed(() => Array.isArray(dashboardStore.recentOrders) ? dashboardStore.recentOrders.slice(0, 10) : [])
 
-// Methods
-const formatCurrency = (value) => {
-  return parseFloat(value || 0).toLocaleString()
+// Lifecycle: ensure recent orders are fetched (independent of date filters)
+onMounted(() => {
+  if (!dashboardStore.recentOrders.length && !dashboardStore.loading.orders) {
+    dashboardStore.fetchRecentOrders().catch(err => console.debug('fetchRecentOrders error', err))
+  }
+})
+
+// Formatting helpers
+const formatCurrency = (value) => parseFloat(value || 0).toLocaleString()
+const formatGrowth = (value) => parseFloat(value || 0).toFixed(1)
+const getGrowthColor = (growth) => parseFloat(growth) >= 0 ? 'text-success' : 'text-error'
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  try {
+    return new Date(dateStr).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+  } catch (e) {
+    return dateStr
+  }
 }
 
-const formatGrowth = (value) => {
-  return parseFloat(value || 0).toFixed(1)
+// Order helpers
+function viewOrder(id) {
+  if (!id) return
+  router.push(`/orders?highlight=${id}`)
 }
 
-const getGrowthColor = (growth) => {
-  return parseFloat(growth) >= 0 ? 'text-success' : 'text-error'
+function getStatusColor(status) {
+  switch (status) {
+    case 'completed': return 'success'
+    case 'processing': return 'primary'
+    case 'on-hold': return 'warning'
+    case 'cancelled': return 'error'
+    case 'refunded': return 'info'
+    case 'failed': return 'error'
+    case 'pending': return 'secondary'
+    default: return 'secondary'
+  }
 }
 
-// Data will be auto-fetched by useAnalytics composable
+function getStatusText(status) {
+  if (!status) return 'Unknown'
+  return status.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 </script>
 
 <style scoped>

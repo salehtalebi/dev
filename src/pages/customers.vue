@@ -483,8 +483,15 @@ const checkUrlParameters = () => {
 
 // Initialize
 onMounted(() => {
+  // Defensive: some hot-reload states may not have resetFilters yet
+  if (typeof customersStore.resetFilters === 'function') {
+    customersStore.resetFilters()
+  } else if (typeof customersStore.clearFilters === 'function') {
+    customersStore.clearFilters()
+    customersStore.setPage && customersStore.setPage(1)
+  }
   checkUrlParameters()
-  fetchCustomers()
+  fetchCustomers(true, 1)
 })
 </script>
 

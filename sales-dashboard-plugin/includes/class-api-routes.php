@@ -441,7 +441,10 @@ class Sales_Dashboard_API_Routes {
             }
             
             if ($request->get_param('search')) {
-                $args['search'] = $request->get_param('search');
+                // We'll capture raw search for post-filtering (WC core search is limited)
+                $raw_search = sanitize_text_field($request->get_param('search'));
+                $args['search'] = $raw_search; // Basic integration; further filtering below
+                $args['paginate'] = false; // ensure we can manually slice later if needed
             }
             
             // Handle date range filters
@@ -451,16 +454,16 @@ class Sales_Dashboard_API_Routes {
                 if ($date_args) {
                     $args = array_merge($args, $date_args);
                 }
-            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
-                // Handle custom date range
-                if ($request->get_param('date_from')) {
-                    $args['date_created'] = '>=' . $request->get_param('date_from');
-                }
-                if ($request->get_param('date_to')) {
-                    $end_date = $request->get_param('date_to') . ' 23:59:59';
-                    $args['date_created'] = isset($args['date_created']) 
-                        ? $args['date_created'] . '...' . $end_date
-                        : '<=' . $end_date;
+            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) { // Custom date range (YYYY-mm-dd)
+                // Handle custom date range (build one correct range expression)
+                $date_from = $request->get_param('date_from');
+                $date_to = $request->get_param('date_to');
+                if ($date_from && $date_to) {
+                    $args['date_created'] = $date_from . '...' . $date_to . ' 23:59:59';
+                } elseif ($date_from) {
+                    $args['date_created'] = '>=' . $date_from;
+                } elseif ($date_to) {
+                    $args['date_created'] = '<=' . $date_to . ' 23:59:59';
                 }
             }
             
@@ -506,15 +509,15 @@ class Sales_Dashboard_API_Routes {
                 if ($date_args) {
                     $count_args = array_merge($count_args, $date_args);
                 }
-            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
-                if ($request->get_param('date_from')) {
-                    $count_args['date_created'] = '>=' . $request->get_param('date_from');
-                }
-                if ($request->get_param('date_to')) {
-                    $end_date = $request->get_param('date_to') . ' 23:59:59';
-                    $count_args['date_created'] = isset($count_args['date_created'])
-                        ? $count_args['date_created'] . '...' . $end_date
-                        : '<=' . $end_date;
+            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) { // Count query custom date range
+                $date_from = $request->get_param('date_from');
+                $date_to = $request->get_param('date_to');
+                if ($date_from && $date_to) {
+                    $count_args['date_created'] = $date_from . '...' . $date_to . ' 23:59:59';
+                } elseif ($date_from) {
+                    $count_args['date_created'] = '>=' . $date_from;
+                } elseif ($date_to) {
+                    $count_args['date_created'] = '<=' . $date_to . ' 23:59:59';
                 }
             }
 
@@ -545,6 +548,20 @@ class Sales_Dashboard_API_Routes {
             
             $order_query = new WC_Order_Query($args);
             $orders = $order_query->get_orders();
+
+            // Enhanced post-filter search (email, name, id) if search supplied
+            if ($request->get_param('search')) {
+                $search_term = strtolower(sanitize_text_field($request->get_param('search')));
+                $orders = array_filter($orders, function($order) use ($search_term) {
+                    if (!$order) return false;
+                    $id_match = strpos((string) $order->get_id(), $search_term) !== false;
+                    $billing_email = strtolower($order->get_billing_email());
+                    $email_match = $billing_email && strpos($billing_email, $search_term) !== false;
+                    $name_combined = strtolower(trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()));
+                    $name_match = $name_combined && strpos($name_combined, $search_term) !== false;
+                    return $id_match || $email_match || $name_match;
+                });
+            }
             
             $formatted_orders = array();
             foreach ($orders as $order) {
@@ -581,13 +598,28 @@ class Sales_Dashboard_API_Routes {
                 gc_collect_cycles();
             }
             
-            $response_payload = array(
-                'data' => $formatted_orders,
-                'total' => $total_orders,
-                'page' => intval($request->get_param('page') ?: 1),
-                'per_page' => intval($request->get_param('per_page') ?: 20),
-                'pages' => ceil($total_orders / intval($request->get_param('per_page') ?: 20))
-            );
+            // If search applied after filtering, adjust total & pagination based on filtered set
+            if ($request->get_param('search')) {
+                $filtered_total = count($formatted_orders);
+                $page = intval($request->get_param('page') ?: 1);
+                $per_page = intval($request->get_param('per_page') ?: 20);
+                $sliced = array_slice($formatted_orders, ($page - 1) * $per_page, $per_page);
+                $response_payload = array(
+                    'data' => $sliced,
+                    'total' => $filtered_total,
+                    'page' => $page,
+                    'per_page' => $per_page,
+                    'pages' => $per_page > 0 ? ceil($filtered_total / $per_page) : 1
+                );
+            } else {
+                $response_payload = array(
+                    'data' => $formatted_orders,
+                    'total' => $total_orders,
+                    'page' => intval($request->get_param('page') ?: 1),
+                    'per_page' => intval($request->get_param('per_page') ?: 20),
+                    'pages' => ceil($total_orders / intval($request->get_param('per_page') ?: 20))
+                );
+            }
 
             $resp = new WP_REST_Response($response_payload);
             $resp->header('X-WP-Total', $total_orders);

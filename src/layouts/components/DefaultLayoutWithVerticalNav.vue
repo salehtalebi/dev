@@ -60,17 +60,7 @@ watch(
 
         <VSpacer />
 
-        <IconBtn
-          href="https://github.com/themeselection/sneat-vuetify-vuejs-admin-template-free"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <VIcon icon="bxl-github" />
-        </IconBtn>
-
-        <IconBtn>
-          <VIcon icon="bx-bell" />
-        </IconBtn>
+        
 
         <NavbarThemeSwitcher class="me-1" />
 

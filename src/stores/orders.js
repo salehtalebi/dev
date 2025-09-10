@@ -289,6 +289,13 @@ export const useOrdersStore = defineStore('orders', {
       }
     },
 
+    // Fully reset filters + pagination when re-entering orders page from another route
+    resetFilters() {
+      this.clearFilters()
+      this.pagination.page = 1
+      // Keep perPage & sorting as user preferences; reset page only
+    },
+
     clearError() {
       this.error = null
     },

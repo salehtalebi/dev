@@ -20,6 +20,8 @@ export function useAnalytics() {
     const salesComparison = computed(() => dashboardStore.salesComparison)
     const managerPerformance = computed(() => dashboardStore.managerPerformance)
     const recentOrders = computed(() => dashboardStore.recentOrders)
+    // Derived convenience values (optional export for components needing direct access)
+    const totalOrders = computed(() => dashboardStore.stats.totalOrders || 0)
 
     // Chart data formatters
     const getRevenueChartData = computed(() => {
@@ -35,7 +37,7 @@ export function useAnalytics() {
 
         const categories = monthlyRevenue.value.map(item => {
             const date = new Date(item.month + '-01')
-            return date.toLocaleDateString('fa-IR', {
+            return date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short'
             })
@@ -63,10 +65,10 @@ export function useAnalytics() {
         }
 
         const labels = topProducts.value.map(product =>
-            product.product_name || `Product ${product.product_id}`
+            product.product_name || product.name || `Product ${product.product_id}`
         )
         const series = topProducts.value.map(product =>
-            parseInt(product.total_sold || 0)
+            parseInt(product.total_sold || product.total_quantity || 0)
         )
 
         return { labels, series }
@@ -181,6 +183,7 @@ export function useAnalytics() {
         getTopProductsChartData,
         getSalesComparisonData,
         getManagerPerformanceData,
+        totalOrders,
 
         // Methods
         fetchDashboardData,

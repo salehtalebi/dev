@@ -359,6 +359,13 @@ export const useCustomersStore = defineStore('customers', {
       }
     },
 
+    // Fully reset filters + pagination when re-entering customers page
+    resetFilters() {
+      this.clearFilters()
+      this.pagination.page = 1
+      // preserve perPage & sorting as user preference
+    },
+
     clearError() {
       this.error = null
     },

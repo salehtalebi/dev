@@ -103,16 +103,24 @@ export const useDashboardStore = defineStore('dashboard', {
       this.loading.orders = true
 
       try {
+        // Always fetch recent orders ignoring long date filters (requirement: show latest regardless of year)
         const params = {
-          ...this.buildAPIParams(),
           per_page: limit,
           orderby: 'date',
-          order: 'desc',
+          order: 'desc'
         }
 
         const api = this._getAPI()
         const response = await api.getOrders(params)
-        this.recentOrders = response.data || []
+        // response shape: { data: [...], headers }
+        let orders = []
+        if (Array.isArray(response.data)) {
+          orders = response.data
+        } else if (Array.isArray(response.data?.data)) {
+          orders = response.data.data
+        }
+        this.recentOrders = orders
+        console.debug('[dashboard] recentOrders fetched:', { count: orders.length, sample: orders.slice(0, 2) })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch recent orders:', error)
@@ -128,7 +136,28 @@ export const useDashboardStore = defineStore('dashboard', {
         const params = this.buildAPIParams()
         const api = this._getAPI()
         const response = await api.getTopProducts(params)
-        this.topProducts = response.data || []
+        // Support different possible response shapes: array, { data: [] }, { products: [] }, { top_products: [] }
+        let productsRaw = []
+        if (Array.isArray(response)) {
+          productsRaw = response
+        } else if (Array.isArray(response?.data)) {
+          productsRaw = response.data
+        } else if (Array.isArray(response?.products)) {
+          productsRaw = response.products
+        } else if (Array.isArray(response?.top_products)) {
+          productsRaw = response.top_products
+        }
+        // Normalize field names to those expected by analytics components
+        const products = productsRaw.map(p => ({
+          product_id: p.product_id || p.id,
+          product_name: p.product_name || p.name || `Product ${p.product_id || p.id}`,
+          total_sold: p.total_sold || p.total_quantity || p.quantity || 0,
+          total_revenue: p.total_revenue || p.revenue || p.total_revenue_usd || p.total || 0,
+          category_name: p.category_name || p.category || p.product_category,
+          price: p.price || p.unit_price || 0
+        }))
+        this.topProducts = products
+        console.debug('[dashboard] topProducts fetched:', { count: products.length, sample: products.slice(0, 3) })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch top products:', error)
@@ -223,7 +252,10 @@ export const useDashboardStore = defineStore('dashboard', {
 
       // Date range handling
       if (this.filters.dateRange && this.filters.dateRange !== 'custom') {
-        params.date_range = this.filters.dateRange
+        // Treat 'year' (and 'all') as full history (no param) per requirement to ignore year/month restrictions
+        if (!['year', 'all'].includes(this.filters.dateRange)) {
+          params.date_range = this.filters.dateRange
+        }
       } else if (this.filters.customStartDate && this.filters.customEndDate) {
         params.start_date = this.filters.customStartDate
         params.end_date = this.filters.customEndDate

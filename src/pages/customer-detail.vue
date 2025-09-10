@@ -17,16 +17,7 @@
                 </VBtn>
                 <span class="text-h4">Customer Details</span>
               </VCol>
-              <VCol cols="12" md="6" class="text-end">
-                <VBtn
-                  color="primary"
-                  variant="outlined"
-                  @click="viewOrders"
-                >
-                  <VIcon start icon="bx-cart" />
-                  View Orders
-                </VBtn>
-              </VCol>
+              <VCol cols="12" md="6" class="text-end" />
             </VRow>
           </VCardText>
         </VCard>
@@ -227,13 +218,15 @@
                   </div>
 
                   <div v-else>
-                    <VDataTable
-                      v-model:page="ordersPagination.currentPage"
-                      v-model:items-per-page="ordersPerPage"
+                    <VDataTableServer
+                      :key="`${ordersPagination.currentPage}-${ordersPerPage}-${ordersPagination.totalOrders}`"
+                      :page="ordersPagination.currentPage"
+                      :items-per-page="ordersPerPage"
                       :headers="orderHeaders"
                       :items="customerOrders"
                       :items-length="ordersPagination.totalOrders"
                       class="text-no-wrap"
+                      @update:options="onOrdersOptionsUpdate"
                     >
                       <template #item.id="{ item }">
                         <VBtn variant="text" size="small" @click="viewOrder(item.id)">
@@ -261,11 +254,12 @@
                           :items-per-page="ordersPerPage"
                           :page="ordersPagination.currentPage"
                           :items-length="ordersPagination.totalOrders"
-                          @update:itemsPerPage="updateOrdersItemsPerPage"
-                          @update:page="updateOrdersPage"
+                          show-current-page
+                          @update:itemsPerPage="(val)=>onOrdersOptionsUpdate({ page: 1, itemsPerPage: val })"
+                          @update:page="(val)=>onOrdersOptionsUpdate({ page: val, itemsPerPage: ordersPerPage })"
                         />
                       </template>
-                    </VDataTable>
+                    </VDataTableServer>
                   </div>
                 </VCardText>
               </VCard>
@@ -357,20 +351,23 @@ const viewOrder = (orderId) => {
   router.push(`/orders/${orderId}`)
 }
 
-const viewOrders = () => {
-  router.push(`/orders?customer=${customerId}`)
-}
+// Removed viewOrders navigation (redundant button removed)
 
-// Pagination methods
-const updateOrdersItemsPerPage = (newItemsPerPage) => {
-  ordersPerPage.value = newItemsPerPage
-  ordersPagination.value.currentPage = 1
-  loadCustomerOrders()
-}
-
-const updateOrdersPage = (newPage) => {
-  ordersPagination.value.currentPage = newPage
-  loadCustomerOrders()
+// Server table style pagination handler
+const onOrdersOptionsUpdate = (options) => {
+  const newPage = options.page
+  const newPer = options.itemsPerPage
+  const pageChanged = ordersPagination.value.currentPage !== newPage
+  const perChanged = ordersPerPage.value !== newPer
+  if (perChanged) {
+    ordersPerPage.value = newPer
+    ordersPagination.value.currentPage = 1
+  } else if (pageChanged) {
+    ordersPagination.value.currentPage = newPage
+  }
+  if (pageChanged || perChanged) {
+    loadCustomerOrders()
+  }
 }
 
 const getInitials = (firstName, lastName) => {

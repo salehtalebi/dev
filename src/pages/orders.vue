@@ -223,6 +223,7 @@
                   :items-per-page="itemsPerPage"
                   :page="currentPage"
                   :items-length="totalOrders"
+                  show-current-page
                   @update:itemsPerPage="updateItemsPerPage"
                   @update:page="updatePage"
                 />
@@ -497,7 +498,21 @@ const checkUrlParameters = () => {
 // Initialize
 onMounted(() => {
   checkUrlParameters()
-  fetchOrders()
+  // Reset filters when entering the page to avoid stale search from previous visit
+  if (typeof ordersStore.resetFilters === 'function') {
+    ordersStore.resetFilters()
+  } else if (typeof ordersStore.clearFilters === 'function') {
+    ordersStore.clearFilters()
+    ordersStore.setPage && ordersStore.setPage(1)
+  }
+  // Re-apply customer param if present (reset removed it)
+  const urlParams = new URLSearchParams(window.location.search)
+  const customerParam = urlParams.get('customer')
+  if (customerParam) {
+    localFilters.value.customer = customerParam
+    ordersStore.setFilters({ customer: customerParam })
+  }
+  fetchOrders(true, 1)
 })
 </script>
 

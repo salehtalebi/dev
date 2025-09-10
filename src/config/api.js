@@ -181,8 +181,8 @@ export const API_HELPERS = {
   },
 
   // Format currency
-  formatCurrency: (amount, currency = 'IRR') => {
-    return new Intl.NumberFormat('fa-IR', {
+  formatCurrency: (amount, currency = 'USD') => {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
     }).format(amount)
@@ -191,13 +191,13 @@ export const API_HELPERS = {
   // Format date for display
   formatDisplayDate: (dateString) => {
     if (!dateString) return '-'
-    return new Intl.DateTimeFormat('fa-IR').format(new Date(dateString))
+    return new Intl.DateTimeFormat('en-US').format(new Date(dateString))
   },
 
   // Format number
   formatNumber: (number) => {
     if (!number) return '0'
-    return new Intl.NumberFormat('fa-IR').format(number)
+    return new Intl.NumberFormat('en-US').format(number)
   },
 }
 
