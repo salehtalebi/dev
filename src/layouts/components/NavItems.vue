@@ -4,18 +4,18 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
 
 <template>
   <!-- Dashboard -->
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Main Dashboard',
       icon: 'nu-dashboard',
       to: '/dashboard',
     }"
-  />
+  /> -->
 
   <!-- New Dashboard -->
   <VerticalNavLink
     :item="{
-      title: 'Dashboard New',
+      title: 'Main Dashboard',
       icon: 'bx-bar-chart-alt-2',
       to: '/dashboard-new',
     }"
@@ -33,7 +33,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
   
   <VerticalNavLink
     :item="{
-      title: 'User Reports',
+      title: 'Customers Reports',
       icon: 'nu-two-user',
       to: '/customers',
     }"
@@ -42,28 +42,28 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
   <!-- Original Menu Items -->
 
 
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Cart & User Behavior',
       icon: 'nu-folder',
       to: '/account-settings',
     }"
-  />
+  /> -->
   
 
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Export Reports',
       icon: 'nu-export',
       to: '/tables',
     }"
-  />
+  /> -->
   
-  <VerticalNavLink
+  <!-- <VerticalNavLink
     :item="{
       title: 'Settings',
       icon: 'bx-detail',
        icon: 'nu-setting',
     }"
-  />
+  /> -->
 </template>
