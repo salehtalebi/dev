@@ -122,6 +122,11 @@ export function useAPI() {
     return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/manager-performance${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
   }
 
+  const getOrderStatistics = async (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/order-statistics${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
   // Export API
   const exportOrders = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
@@ -161,6 +166,7 @@ export function useAPI() {
     getMonthlyRevenue,
     getSalesComparison,
     getManagerPerformance,
+    getOrderStatistics,
 
     // Export
     exportOrders,

@@ -70,6 +70,13 @@ class Sales_Dashboard_Analytics {
             'permission_callback' => array($this, 'check_permissions')
         ));
         
+        // Order statistics by category - NEW
+        register_rest_route('sales-dashboard/v1', '/analytics/order-statistics', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_order_statistics'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
         // Account manager analytics
         register_rest_route('sales-dashboard/v1', '/analytics/manager/(?P<id>\d+)', array(
             'methods' => 'GET',
@@ -1177,6 +1184,431 @@ class Sales_Dashboard_Analytics {
             error_log('Manager Performance Error: ' . $e->getMessage());
             return rest_ensure_response(array('data' => array()));
         }
+    }
+    
+    /**
+     * Get order statistics by category with filtering and comparison
+     * Supports: month, year, date-range filters + comparison
+     */
+    public function get_order_statistics($request) {
+        try {
+            // Get filter parameters
+            $filter_type = $request->get_param('filterType') ?: 'year';
+            $filter_value = $request->get_param('filterValue');
+            $start_date = $request->get_param('startDate');
+            $end_date = $request->get_param('endDate');
+            $compare = $request->get_param('compare') === 'true' || $request->get_param('compare') === true;
+            $compare_filter_type = $request->get_param('compareFilterType');
+            $compare_filter_value = $request->get_param('compareFilterValue');
+            $compare_start_date = $request->get_param('compareStartDate');
+            $compare_end_date = $request->get_param('compareEndDate');
+            
+            // Get date range for primary period
+            $range = null;
+            if ($filter_type === 'date-range' && $start_date && $end_date) {
+                $range = array(
+                    'start' => $start_date . ' 00:00:00',
+                    'end' => $end_date . ' 23:59:59'
+                );
+            } else {
+                $range = $this->calculate_simple_date_range($filter_type, $filter_value);
+            }
+            
+            if (!$range) {
+                return new WP_Error('invalid_date_range', 'Invalid date range', array('status' => 400));
+            }
+            
+            // Get primary period statistics
+            $primary_stats = $this->get_category_statistics($range['start'], $range['end']);
+            
+            // Generate period label
+            $period_label = $this->format_statistics_period_label($filter_type, $filter_value, $start_date, $end_date);
+            
+            $response = array(
+                'total_orders' => $primary_stats['total_orders'],
+                'total_revenue' => $primary_stats['total_revenue'],
+                'categories' => $primary_stats['categories'],
+                'period_start' => $range['start'],
+                'period_end' => $range['end'],
+                'period_label' => $period_label,
+                'filter_type' => $filter_type
+            );
+            
+            // Handle comparison if requested
+            if ($compare) {
+                $compare_range = null;
+                
+                if ($compare_filter_type === 'date-range' && $compare_start_date && $compare_end_date) {
+                    $compare_range = array(
+                        'start' => $compare_start_date . ' 00:00:00',
+                        'end' => $compare_end_date . ' 23:59:59'
+                    );
+                } else if ($compare_filter_type && $compare_filter_value) {
+                    $compare_range = $this->calculate_simple_date_range($compare_filter_type, $compare_filter_value);
+                }
+                
+                if ($compare_range) {
+                    $compare_stats = $this->get_category_statistics($compare_range['start'], $compare_range['end']);
+                    $compare_period_label = $this->format_statistics_period_label($compare_filter_type, $compare_filter_value, $compare_start_date, $compare_end_date);
+                    
+                    // Calculate growth for each category
+                    $categories_with_growth = array();
+                    foreach ($primary_stats['categories'] as $category) {
+                        $cat_name = $category['category'];
+                        $compare_cat = null;
+                        
+                        // Find matching category in comparison data
+                        foreach ($compare_stats['categories'] as $c) {
+                            if ($c['category'] === $cat_name) {
+                                $compare_cat = $c;
+                                break;
+                            }
+                        }
+                        
+                        $cat_with_growth = $category;
+                        
+                        if ($compare_cat) {
+                            // Calculate growth percentages
+                            $orders_growth = 0;
+                            if ($compare_cat['orders'] > 0) {
+                                $orders_growth = (($category['orders'] - $compare_cat['orders']) / $compare_cat['orders']) * 100;
+                            }
+                            
+                            $revenue_growth = 0;
+                            if ($compare_cat['revenue'] > 0) {
+                                $revenue_growth = (($category['revenue'] - $compare_cat['revenue']) / $compare_cat['revenue']) * 100;
+                            }
+                            
+                            $cat_with_growth['compare_orders'] = $compare_cat['orders'];
+                            $cat_with_growth['compare_revenue'] = $compare_cat['revenue'];
+                            $cat_with_growth['orders_growth'] = round($orders_growth, 2);
+                            $cat_with_growth['revenue_growth'] = round($revenue_growth, 2);
+                        } else {
+                            // Category doesn't exist in comparison period
+                            $cat_with_growth['compare_orders'] = 0;
+                            $cat_with_growth['compare_revenue'] = 0;
+                            $cat_with_growth['orders_growth'] = 100; // 100% increase (from 0)
+                            $cat_with_growth['revenue_growth'] = 100;
+                        }
+                        
+                        $categories_with_growth[] = $cat_with_growth;
+                    }
+                    
+                    // Add categories that exist in compare period but not in primary
+                    foreach ($compare_stats['categories'] as $compare_cat) {
+                        $exists = false;
+                        foreach ($primary_stats['categories'] as $cat) {
+                            if ($cat['category'] === $compare_cat['category']) {
+                                $exists = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!$exists) {
+                            $categories_with_growth[] = array(
+                                'category' => $compare_cat['category'],
+                                'category_id' => $compare_cat['category_id'],
+                                'orders' => 0,
+                                'revenue' => 0,
+                                'compare_orders' => $compare_cat['orders'],
+                                'compare_revenue' => $compare_cat['revenue'],
+                                'orders_growth' => -100, // 100% decrease (to 0)
+                                'revenue_growth' => -100
+                            );
+                        }
+                    }
+                    
+                    $response['categories'] = $categories_with_growth;
+                    $response['compare_total_orders'] = $compare_stats['total_orders'];
+                    $response['compare_total_revenue'] = $compare_stats['total_revenue'];
+                    $response['compare_period_start'] = $compare_range['start'];
+                    $response['compare_period_end'] = $compare_range['end'];
+                    $response['compare_period_label'] = $compare_period_label;
+                    
+                    // Overall growth
+                    $total_orders_growth = 0;
+                    if ($compare_stats['total_orders'] > 0) {
+                        $total_orders_growth = (($primary_stats['total_orders'] - $compare_stats['total_orders']) / $compare_stats['total_orders']) * 100;
+                    }
+                    
+                    $total_revenue_growth = 0;
+                    if ($compare_stats['total_revenue'] > 0) {
+                        $total_revenue_growth = (($primary_stats['total_revenue'] - $compare_stats['total_revenue']) / $compare_stats['total_revenue']) * 100;
+                    }
+                    
+                    $response['comparison_summary'] = array(
+                        'total_orders_growth' => round($total_orders_growth, 2),
+                        'total_revenue_growth' => round($total_revenue_growth, 2),
+                        'orders_difference' => $primary_stats['total_orders'] - $compare_stats['total_orders'],
+                        'revenue_difference' => $primary_stats['total_revenue'] - $compare_stats['total_revenue'],
+                        'period_label' => $period_label,
+                        'compare_period_label' => $compare_period_label
+                    );
+                }
+            }
+            
+            return rest_ensure_response($response);
+            
+        } catch (Exception $e) {
+            error_log('Order Statistics Error: ' . $e->getMessage());
+            return new WP_Error('server_error', $e->getMessage(), array('status' => 500));
+        }
+    }
+    
+    /**
+     * Get category statistics for a given period
+     * Optimized with direct database queries
+     */
+    private function get_category_statistics($start_date, $end_date) {
+        global $wpdb;
+        
+        $hpos_enabled = get_option('woocommerce_custom_orders_table_enabled') === 'yes';
+        
+        if ($hpos_enabled) {
+            return $this->get_category_statistics_hpos($start_date, $end_date);
+        } else {
+            return $this->get_category_statistics_posts($start_date, $end_date);
+        }
+    }
+    
+    /**
+     * Get category statistics using HPOS tables
+     */
+    private function get_category_statistics_hpos($start_date, $end_date) {
+        global $wpdb;
+        
+        $table_orders = $wpdb->prefix . 'wc_orders';
+        $table_items = $wpdb->prefix . 'woocommerce_order_items';
+        $table_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+        
+        // Get order IDs in date range with completed/processing status
+        $order_ids = $wpdb->get_col($wpdb->prepare("
+            SELECT id 
+            FROM {$table_orders}
+            WHERE date_created_gmt >= %s 
+            AND date_created_gmt <= %s
+            AND status IN ('wc-completed', 'wc-processing')
+        ", $start_date, $end_date));
+        
+        if (empty($order_ids)) {
+            return array(
+                'total_orders' => 0,
+                'total_revenue' => 0,
+                'categories' => array()
+            );
+        }
+        
+        $order_ids_str = implode(',', array_map('intval', $order_ids));
+        
+        // Get total orders and revenue
+        $totals = $wpdb->get_row("
+            SELECT 
+                COUNT(DISTINCT id) as total_orders,
+                COALESCE(SUM(total_amount), 0) as total_revenue
+            FROM {$table_orders}
+            WHERE id IN ($order_ids_str)
+        ");
+        
+        // Get products from order items with order info
+        $products_data = $wpdb->get_results("
+            SELECT 
+                oi.order_id,
+                oi.order_item_id,
+                im1.meta_value as product_id,
+                im2.meta_value as line_total,
+                im3.meta_value as quantity
+            FROM {$table_items} oi
+            LEFT JOIN {$table_itemmeta} im1 ON oi.order_item_id = im1.order_item_id AND im1.meta_key = '_product_id'
+            LEFT JOIN {$table_itemmeta} im2 ON oi.order_item_id = im2.order_item_id AND im2.meta_key = '_line_total'
+            LEFT JOIN {$table_itemmeta} im3 ON oi.order_item_id = im3.order_item_id AND im3.meta_key = '_qty'
+            WHERE oi.order_id IN ($order_ids_str)
+            AND oi.order_item_type = 'line_item'
+        ");
+        
+        // Group by category
+        $categories_map = array();
+        
+        foreach ($products_data as $item) {
+            $product_id = intval($item->product_id);
+            $order_id = intval($item->order_id);
+            $line_total = floatval($item->line_total);
+            
+            if ($product_id > 0) {
+                // Get product categories
+                $terms = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
+                
+                if (!empty($terms) && !is_wp_error($terms)) {
+                    // Loop through ALL categories of this product
+                    foreach ($terms as $term) {
+                        $cat_name = $term->name;
+                        $cat_id = $term->term_id;
+                        
+                        if (!isset($categories_map[$cat_name])) {
+                            $categories_map[$cat_name] = array(
+                                'category' => $cat_name,
+                                'category_id' => $cat_id,
+                                'orders' => 0,
+                                'revenue' => 0,
+                                'order_ids' => array()
+                            );
+                        }
+                        
+                        // Count unique orders per category
+                        if (!in_array($order_id, $categories_map[$cat_name]['order_ids'])) {
+                            $categories_map[$cat_name]['order_ids'][] = $order_id;
+                            $categories_map[$cat_name]['orders']++;
+                        }
+                        
+                        // Add line total (revenue from this product only)
+                        $categories_map[$cat_name]['revenue'] += $line_total;
+                    }
+                }
+            }
+        }
+        
+        // Format categories
+        $categories = array();
+        foreach ($categories_map as $cat_data) {
+            unset($cat_data['order_ids']); // Remove internal tracking
+            $categories[] = $cat_data;
+        }
+        
+        // Sort by orders count
+        usort($categories, function($a, $b) {
+            return $b['orders'] - $a['orders'];
+        });
+        
+        return array(
+            'total_orders' => intval($totals->total_orders),
+            'total_revenue' => floatval($totals->total_revenue),
+            'categories' => $categories
+        );
+    }
+    
+    /**
+     * Get category statistics using Posts table (legacy)
+     */
+    private function get_category_statistics_posts($start_date, $end_date) {
+        global $wpdb;
+        
+        // Get orders in date range
+        $order_ids = $wpdb->get_col($wpdb->prepare("
+            SELECT ID 
+            FROM {$wpdb->posts} 
+            WHERE post_type = 'shop_order'
+            AND post_status IN ('wc-completed', 'wc-processing')
+            AND post_date >= %s 
+            AND post_date <= %s
+        ", $start_date, $end_date));
+        
+        if (empty($order_ids)) {
+            return array(
+                'total_orders' => 0,
+                'total_revenue' => 0,
+                'categories' => array()
+            );
+        }
+        
+        $order_ids_str = implode(',', array_map('intval', $order_ids));
+        
+        // Get total revenue
+        $total_revenue = $wpdb->get_var("
+            SELECT COALESCE(SUM(meta_value), 0)
+            FROM {$wpdb->postmeta}
+            WHERE post_id IN ($order_ids_str)
+            AND meta_key = '_order_total'
+        ");
+        
+        // Get products from order items with line totals
+        $table_items = $wpdb->prefix . 'woocommerce_order_items';
+        $table_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+        
+        $products_data = $wpdb->get_results("
+            SELECT 
+                oi.order_item_id,
+                oi.order_id,
+                im1.meta_value as product_id,
+                im2.meta_value as line_total,
+                im3.meta_value as quantity
+            FROM {$table_items} oi
+            LEFT JOIN {$table_itemmeta} im1 ON oi.order_item_id = im1.order_item_id AND im1.meta_key = '_product_id'
+            LEFT JOIN {$table_itemmeta} im2 ON oi.order_item_id = im2.order_item_id AND im2.meta_key = '_line_total'
+            LEFT JOIN {$table_itemmeta} im3 ON oi.order_item_id = im3.order_item_id AND im3.meta_key = '_qty'
+            WHERE oi.order_id IN ($order_ids_str)
+            AND oi.order_item_type = 'line_item'
+        ");
+        
+        // Group by category
+        $categories_map = array();
+        
+        foreach ($products_data as $item) {
+            $product_id = intval($item->product_id);
+            $order_id = intval($item->order_id);
+            $line_total = floatval($item->line_total);
+            
+            if ($product_id > 0) {
+                $terms = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
+                
+                if (!empty($terms) && !is_wp_error($terms)) {
+                    // Loop through ALL categories of this product
+                    foreach ($terms as $term) {
+                        $cat_name = $term->name;
+                        $cat_id = $term->term_id;
+                        
+                        if (!isset($categories_map[$cat_name])) {
+                            $categories_map[$cat_name] = array(
+                                'category' => $cat_name,
+                                'category_id' => $cat_id,
+                                'orders' => 0,
+                                'revenue' => 0,
+                                'order_ids' => array()
+                            );
+                        }
+                        
+                        // Count unique orders per category
+                        if (!in_array($order_id, $categories_map[$cat_name]['order_ids'])) {
+                            $categories_map[$cat_name]['order_ids'][] = $order_id;
+                            $categories_map[$cat_name]['orders']++;
+                        }
+                        
+                        // Add line total (revenue from this product only)
+                        $categories_map[$cat_name]['revenue'] += $line_total;
+                    }
+                }
+            }
+        }
+        
+        $categories = array();
+        foreach ($categories_map as $cat_data) {
+            unset($cat_data['order_ids']);
+            $categories[] = $cat_data;
+        }
+        
+        usort($categories, function($a, $b) {
+            return $b['orders'] - $a['orders'];
+        });
+        
+        return array(
+            'total_orders' => count($order_ids),
+            'total_revenue' => floatval($total_revenue),
+            'categories' => $categories
+        );
+    }
+    
+    /**
+     * Format period label for order statistics
+     */
+    private function format_statistics_period_label($filter_type, $filter_value, $start_date = null, $end_date = null) {
+        if ($filter_type === 'date-range' && $start_date && $end_date) {
+            $start = DateTime::createFromFormat('Y-m-d', $start_date);
+            $end = DateTime::createFromFormat('Y-m-d', $end_date);
+            if ($start && $end) {
+                return $start->format('M d, Y') . ' - ' . $end->format('M d, Y');
+            }
+            return $start_date . ' - ' . $end_date;
+        }
+        
+        return $this->format_period_label($filter_type, $filter_value);
     }
     
     /**

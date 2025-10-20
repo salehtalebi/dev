@@ -1,56 +1,403 @@
+<template>
+  <VCard>
+    <VCardItem>
+      <VCardTitle>Order Statistics</VCardTitle>
+      <template #append>
+        <VBtn
+          icon
+          size="x-small"
+          color="default"
+          variant="text"
+          @click="refreshData"
+          :loading="loading"
+        >
+          <VIcon
+            size="20"
+            icon="bx-refresh"
+          />
+        </VBtn>
+      </template>
+    </VCardItem>
+
+    <VCardText>
+      <!-- Filters Section -->
+      <VRow class="mb-4" dense>
+        <!-- Filter Type -->
+        <VCol cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.filterType"
+            :items="filterTypeOptions"
+            label="Period"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onFilterTypeChange"
+          />
+        </VCol>
+
+        <!-- Month Selector -->
+        <VCol v-if="localFilters.filterType === 'month'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.filterValue"
+            type="month"
+            label="Select Month"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Year Selector -->
+        <VCol v-if="localFilters.filterType === 'year'" cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.filterValue"
+            :items="yearOptions"
+            label="Select Year"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Date Range Start -->
+        <VCol v-if="localFilters.filterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.startDate"
+            type="date"
+            label="Start Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Date Range End -->
+        <VCol v-if="localFilters.filterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.endDate"
+            type="date"
+            label="End Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Checkbox -->
+        <VCol cols="12" sm="6" md="2" class="d-flex align-center">
+          <VCheckbox
+            v-model="localFilters.compare"
+            label="Compare"
+            density="compact"
+            hide-details
+            @update:model-value="onCompareToggle"
+          />
+        </VCol>
+      </VRow>
+
+      <!-- Comparison Filters (when compare is enabled) -->
+      <VRow v-if="localFilters.compare" class="mb-4" dense>
+        <!-- Compare Filter Type -->
+        <VCol cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.compareFilterType"
+            :items="compareFilterTypeOptions"
+            label="Compare Period"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onCompareFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Month Selector -->
+        <VCol v-if="localFilters.compareFilterType === 'month'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareFilterValue"
+            type="month"
+            label="Compare Month"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Year Selector -->
+        <VCol v-if="localFilters.compareFilterType === 'year'" cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.compareFilterValue"
+            :items="yearOptions"
+            label="Compare Year"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Date Range Start -->
+        <VCol v-if="localFilters.compareFilterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareStartDate"
+            type="date"
+            label="Compare Start"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Date Range End -->
+        <VCol v-if="localFilters.compareFilterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareEndDate"
+            type="date"
+            label="Compare End"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+      </VRow>
+
+      <!-- Total Stats Display -->
+      <div class="d-flex align-center justify-space-between mb-6">
+        <div>
+          <h3 class="text-h3 mb-1">{{ totalStats.totalOrdersFormatted }}</h3>
+          <div class="text-caption text-medium-emphasis">
+            Total Orders - {{ totalStats.periodLabel || 'All Time' }}
+          </div>
+          <div v-if="categoriesList.length > 0" class="text-caption text-medium-emphasis mt-1">
+            {{ categoriesList.length }} categories
+          </div>
+          <div v-if="totalStats.hasComparison" class="mt-2">
+            <VChip
+              :color="getGrowthColor(totalStats.ordersGrowth)"
+              size="small"
+              variant="tonal"
+            >
+              {{ totalStats.ordersGrowthFormatted }}%
+            </VChip>
+            <span class="text-caption text-medium-emphasis ms-2">vs {{ totalStats.comparePeriodLabel }}</span>
+          </div>
+        </div>
+
+        <!-- Donut Chart -->
+        <div v-if="chartData.series.length > 0" class="text-center">
+          <VueApexCharts
+            type="donut"
+            :height="140"
+            :width="140"
+            :options="chartOptions"
+            :series="chartData.series"
+          />
+          <div class="text-caption text-medium-emphasis mt-1">
+            Top {{ chartData.series.length }} Categories
+          </div>
+        </div>
+        <div v-else class="text-caption text-medium-emphasis">No Data</div>
+      </div>
+
+      <!-- Comparison Summary (when compare is enabled) -->
+      <VAlert
+        v-if="totalStats.hasComparison"
+        :color="getGrowthColor(totalStats.revenueGrowth)"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        <div class="d-flex align-center justify-space-between">
+          <div>
+            <div class="font-weight-medium">Revenue Growth</div>
+            <div class="text-caption">
+              {{ totalStats.totalRevenueFormatted }} ({{ totalStats.periodLabel }})
+              vs
+              ${{ totalStats.compareTotalRevenue.toLocaleString('en-US') }} ({{ totalStats.comparePeriodLabel }})
+            </div>
+          </div>
+          <div class="text-h6">{{ totalStats.revenueGrowthFormatted }}%</div>
+        </div>
+      </VAlert>
+
+      <!-- Categories List -->
+      <VList class="card-list">
+        <VListItem
+          v-for="(category, index) in displayedCategories"
+          :key="category.categoryId"
+        >
+          <template #prepend>
+            <VAvatar
+              size="40"
+              rounded
+              variant="tonal"
+              :color="category.avatarColor"
+            >
+              <VIcon icon="bx-category" />
+            </VAvatar>
+          </template>
+
+          <VListItemTitle class="font-weight-medium">
+            {{ category.category }}
+          </VListItemTitle>
+          
+          <VListItemSubtitle class="text-body-2">
+            <div class="d-flex align-center gap-2">
+              <span>{{ category.revenueFormatted }}</span>
+              <VChip
+                v-if="category.hasComparison"
+                :color="getGrowthColor(category.revenueGrowth)"
+                size="x-small"
+                variant="tonal"
+              >
+                {{ category.revenueGrowthFormatted }}%
+              </VChip>
+            </div>
+          </VListItemSubtitle>
+
+          <template #append>
+            <div class="text-end">
+              <div class="font-weight-medium">{{ category.ordersFormatted }}</div>
+              <div v-if="category.hasComparison" class="text-caption">
+                <VChip
+                  :color="getGrowthColor(category.ordersGrowth)"
+                  size="x-small"
+                  variant="tonal"
+                >
+                  {{ category.ordersGrowthFormatted }}%
+                </VChip>
+              </div>
+            </div>
+          </template>
+        </VListItem>
+
+        <VListItem v-if="categoriesList.length === 0 && !loading">
+          <VListItemTitle class="text-center text-medium-emphasis">
+            No data available
+          </VListItemTitle>
+        </VListItem>
+
+        <!-- Load More Button -->
+        <VListItem v-if="categoriesList.length > itemsToShow && !showAll">
+          <VBtn
+            block
+            variant="outlined"
+            color="primary"
+            size="small"
+            @click="showAll = true"
+          >
+            Load More ({{ categoriesList.length - itemsToShow }} more)
+          </VBtn>
+        </VListItem>
+      </VList>
+    </VCardText>
+  </VCard>
+</template>
+
 <script setup>
-import { useDashboardStore } from '@/stores/dashboard'
+import { useOrderStatistics } from '@/composables/useOrderStatistics'
 import { hexToRgb } from '@core/utils/colorConverter'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { useTheme } from 'vuetify'
 
 const vuetifyTheme = useTheme()
-const dashboardStore = useDashboardStore()
+const {
+  orderStatistics,
+  orderStatisticsFilters,
+  loading,
+  getDonutChartData,
+  getCategoriesList,
+  getTotalStats,
+  getGrowthColor,
+  fetchOrderStatistics,
+  updateFilters,
+} = useOrderStatistics()
 
-// Derive top categories from existing topProducts (assumes each product has category_name & category_id)
-const topCategories = computed(() => {
-  const list = dashboardStore.topProducts || []
-  if (list.length === 0) return []
-  const map = new Map()
-  list.forEach(p => {
-    const cat = p.category_name || p.category || p.product_category || 'Uncategorized'
-    const sold = parseInt(p.total_sold || p.total_quantity || p.units_sold || p.quantity || 0)
-    const revenue = parseFloat(p.total_revenue || p.revenue || p.sales_amount || 0)
-    const current = map.get(cat) || { category: cat, units: 0, revenue: 0 }
-    current.units += isNaN(sold) ? 0 : sold
-    current.revenue += isNaN(revenue) ? 0 : revenue
-    map.set(cat, current)
-  })
-  return Array.from(map.values()).sort((a,b) => b.units - a.units).slice(0,5)
+// Show/hide state for load more
+const showAll = ref(false)
+const itemsToShow = 5  // تغییر از 10 به 5
+
+// Local filters for UI
+const localFilters = reactive({
+  filterType: 'year',
+  filterValue: new Date().getFullYear().toString(),
+  startDate: null,
+  endDate: null,
+  compare: false,
+  compareFilterType: 'month',
+  compareFilterValue: null,
+  compareStartDate: null,
+  compareEndDate: null,
 })
 
-// Total orders from stats
-const totalOrders = computed(() => {
-  const direct = dashboardStore.stats.totalOrders || 0
-  if (direct > 0) return direct
-  // Fallback: sum of units of categories (approx) if stats not loaded yet
-  const sumUnits = topCategories.value.reduce((s,c)=>s+c.units,0)
-  return sumUnits
+// Filter options
+const filterTypeOptions = [
+  { title: 'Month', value: 'month' },
+  { title: 'Year', value: 'year' },
+  { title: 'Date Range', value: 'date-range' },
+]
+
+const compareFilterTypeOptions = [
+  { title: 'Month', value: 'month' },
+  { title: 'Year', value: 'year' },
+  { title: 'Date Range', value: 'date-range' },
+]
+
+// Year options (last 5 years)
+const yearOptions = computed(() => {
+  const currentYear = new Date().getFullYear()
+  const years = []
+  for (let i = 0; i < 5; i++) {
+    years.push({ title: (currentYear - i).toString(), value: (currentYear - i).toString() })
+  }
+  return years
 })
 
-// Chart series & labels
-const series = computed(() => topCategories.value.map(c => c.units))
-const labels = computed(() => topCategories.value.map(c => c.category))
+// Computed data
+const chartData = computed(() => getDonutChartData.value)
+const categoriesList = computed(() => getCategoriesList.value)
+const totalStats = computed(() => getTotalStats.value)
 
+// Display limited or all categories
+const displayedCategories = computed(() => {
+  if (showAll.value) {
+    return categoriesList.value
+  }
+  return categoriesList.value.slice(0, itemsToShow)
+})
+
+// Chart options
 const chartOptions = computed(() => {
   const currentTheme = vuetifyTheme.current.value.colors
   const variableTheme = vuetifyTheme.current.value.variables
-  const secondaryTextColor = `rgba(${ hexToRgb(String(currentTheme['on-surface'])) },${ variableTheme['medium-emphasis-opacity'] })`
-  const primaryTextColor = `rgba(${ hexToRgb(String(currentTheme['on-surface'])) },${ variableTheme['high-emphasis-opacity'] })`
+  const secondaryTextColor = `rgba(${hexToRgb(String(currentTheme['on-surface']))},${variableTheme['medium-emphasis-opacity']})`
+  const primaryTextColor = `rgba(${hexToRgb(String(currentTheme['on-surface']))},${variableTheme['high-emphasis-opacity']})`
 
   return {
-    chart: { sparkline: { enabled: true }, animations: { enabled: false } },
-    stroke: { width: 6, colors: [currentTheme.surface] },
+    chart: {
+      sparkline: { enabled: true },
+      animations: { enabled: false },
+    },
+    stroke: {
+      width: 6,
+      colors: [currentTheme.surface],
+    },
     legend: { show: false },
-    tooltip: { enabled: true },
+    tooltip: {
+      enabled: true,
+      y: {
+        formatter: (value) => `${value} orders`,
+      },
+    },
     dataLabels: { enabled: false },
-    labels: labels.value,
+    labels: chartData.value.labels,
     colors: [
       currentTheme.primary,
       currentTheme.success,
@@ -58,8 +405,13 @@ const chartOptions = computed(() => {
       currentTheme.info,
       currentTheme.error,
     ],
-    grid: { padding: { top: -7, bottom: 5 } },
-    states: { hover: { filter: { type: 'none' } }, active: { filter: { type: 'none' } } },
+    grid: {
+      padding: { top: -7, bottom: 5 },
+    },
+    states: {
+      hover: { filter: { type: 'none' } },
+      active: { filter: { type: 'none' } },
+    },
     plotOptions: {
       pie: {
         expandOnClick: false,
@@ -67,16 +419,27 @@ const chartOptions = computed(() => {
           size: '75%',
           labels: {
             show: true,
-            name: { offsetY: 17, fontSize: '13px', color: secondaryTextColor, fontFamily: 'Public Sans' },
-            value: { offsetY: -17, fontSize: '18px', color: primaryTextColor, fontFamily: 'Public Sans', fontWeight: 500 },
+            name: {
+              offsetY: 17,
+              fontSize: '13px',
+              color: secondaryTextColor,
+              fontFamily: 'Public Sans',
+            },
+            value: {
+              offsetY: -17,
+              fontSize: '18px',
+              color: primaryTextColor,
+              fontFamily: 'Public Sans',
+              fontWeight: 500,
+            },
             total: {
               show: true,
-              label: 'Total',
+              label: 'Top 5 Categories',
               fontSize: '13px',
-              lineHeight: '18px',
               formatter: () => {
-                const sum = series.value.reduce((s,v)=>s+v,0)
-                return sum
+                // Show sum of top 5 categories only
+                const sum = chartData.value.series.reduce((s, v) => s + v, 0)
+                return sum.toString()
               },
               color: secondaryTextColor,
               fontFamily: 'Public Sans',
@@ -88,93 +451,96 @@ const chartOptions = computed(() => {
   }
 })
 
-// List items from categories
-const orders = computed(() => topCategories.value.map((c, idx) => ({
-  amount: c.units.toLocaleString('en-US'),
-  title: c.category,
-  avatarColor: ['primary','success','warning','info','error'][idx % 5],
-  subtitle: `$${c.revenue.toLocaleString('en-US')}`,
-  avatarIcon: 'bx-category'
-})))
-
-const moreList = [
-  { title: 'Refresh', value: 'Refresh' },
-]
-
-onMounted(async () => {
-  if (dashboardStore.topProducts.length === 0) {
-    await dashboardStore.fetchTopProducts()
+// Handlers
+function onFilterTypeChange() {
+  // Reset filter value when type changes
+  if (localFilters.filterType === 'month') {
+    const now = new Date()
+    localFilters.filterValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  } else if (localFilters.filterType === 'year') {
+    localFilters.filterValue = new Date().getFullYear().toString()
+  } else if (localFilters.filterType === 'date-range') {
+    localFilters.startDate = null
+    localFilters.endDate = null
   }
-  if (!dashboardStore.stats.totalOrders) {
-    await dashboardStore.fetchDashboardStats()
+  
+  onFilterChange()
+}
+
+function onCompareToggle() {
+  if (localFilters.compare) {
+    // Initialize compare filters
+    localFilters.compareFilterType = 'month'
+    const now = new Date()
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    localFilters.compareFilterValue = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`
   }
+  
+  onFilterChange()
+}
+
+function onCompareFilterChange() {
+  // Reset compare filter value when type changes
+  if (localFilters.compareFilterType === 'month') {
+    const now = new Date()
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    localFilters.compareFilterValue = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`
+  } else if (localFilters.compareFilterType === 'year') {
+    localFilters.compareFilterValue = (new Date().getFullYear() - 1).toString()
+  } else if (localFilters.compareFilterType === 'date-range') {
+    localFilters.compareStartDate = null
+    localFilters.compareEndDate = null
+  }
+  
+  onFilterChange()
+}
+
+function onFilterChange() {
+  // Validate date range
+  if (localFilters.filterType === 'date-range') {
+    if (!localFilters.startDate || !localFilters.endDate) {
+      return // Wait for both dates
+    }
+  }
+
+  if (localFilters.compare && localFilters.compareFilterType === 'date-range') {
+    if (!localFilters.compareStartDate || !localFilters.compareEndDate) {
+      return // Wait for both compare dates
+    }
+  }
+
+  // Reset show all when filter changes
+  showAll.value = false
+
+  // Update store filters
+  updateFilters(localFilters)
+  
+  // Fetch data
+  fetchOrderStatistics()
+}
+
+function refreshData() {
+  showAll.value = false
+  fetchOrderStatistics()
+}
+
+// Initialize
+onMounted(() => {
+  // Set initial filter value
+  if (localFilters.filterType === 'year') {
+    localFilters.filterValue = new Date().getFullYear().toString()
+  } else if (localFilters.filterType === 'month') {
+    const now = new Date()
+    localFilters.filterValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  // Update store and fetch
+  updateFilters(localFilters)
+  fetchOrderStatistics()
 })
 </script>
 
-<template>
-  <VCard>
-    <VCardItem>
-      <VCardTitle>
-        Order Statistics
-      </VCardTitle>
-  <!-- Removed hardcoded total sales subtitle per requirement -->
-
-      <template #append>
-        <MoreBtn :menu-list="moreList" />
-      </template>
-    </VCardItem>
-
-    <VCardText>
-      <div class="d-flex align-center justify-space-between mb-6">
-        <div>
-          <h3 class="text-h3 mb-1">{{ totalOrders.toLocaleString('en-US') }}</h3>
-          <div class="text-caption text-medium-emphasis">Total Orders</div>
-        </div>
-        <div v-if="series.length && series.reduce((s,v)=>s+v,0) > 0">
-          <VueApexCharts
-            type="donut"
-            :height="120"
-            width="100"
-            :options="chartOptions"
-            :series="series"
-          />
-        </div>
-        <div v-else class="text-caption text-medium-emphasis">No Data</div>
-      </div>
-
-      <VList class="card-list">
-        <VListItem
-          v-for="order in orders"
-          :key="order.title"
-        >
-          <template #prepend>
-            <VAvatar
-              size="40"
-              rounded
-              variant="tonal"
-              :color="order.avatarColor"
-            >
-              <VIcon :icon="order.avatarIcon" />
-            </VAvatar>
-          </template>
-
-          <VListItemTitle class="font-weight-medium">
-            {{ order.title }}
-          </VListItemTitle>
-          <VListItemSubtitle class="text-body-2">
-            {{ order.subtitle }}
-          </VListItemSubtitle>
-
-          <template #append>
-            <span>{{ order.amount }}</span>
-          </template>
-        </VListItem>
-      </VList>
-    </VCardText>
-  </VCard>
-</template>
-
-<style lang="scss">
+<style lang="scss" scoped>
 .card-list {
   --v-card-list-gap: 1.25rem;
 }

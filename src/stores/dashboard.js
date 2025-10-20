@@ -35,6 +35,7 @@ export const useDashboardStore = defineStore('dashboard', {
       revenue: false,
       comparison: false,
       performance: false,
+      orderStatistics: false,
     },
     error: null,
     filters: {
@@ -56,6 +57,29 @@ export const useDashboardStore = defineStore('dashboard', {
       filterType: 'year', // 'month', 'year'
       filterValue: null, // specific month (YYYY-MM) or year (YYYY)
     },
+    // Order statistics specific state
+    orderStatistics: {
+      totalOrders: 0,
+      totalRevenue: 0,
+      categories: [],
+      compareTotalOrders: 0,
+      compareTotalRevenue: 0,
+      comparisonSummary: null,
+      periodLabel: '',
+      comparePeriodLabel: '',
+    },
+    // Order statistics filters
+    orderStatisticsFilters: {
+      filterType: 'year', // 'month', 'year', 'date-range'
+      filterValue: null,
+      startDate: null,
+      endDate: null,
+      compare: false,
+      compareFilterType: null,
+      compareFilterValue: null,
+      compareStartDate: null,
+      compareEndDate: null,
+    },
   }),
 
   getters: {
@@ -71,14 +95,23 @@ export const useDashboardStore = defineStore('dashboard', {
   actions: {
     // Initialize API instance
     _getAPI() {
-      const { getAnalytics, getOrders, getTopProducts, getMonthlyRevenue, getSalesComparison, getManagerPerformance } = useAPI()
+      const {
+        getAnalytics,
+        getOrders,
+        getTopProducts,
+        getMonthlyRevenue,
+        getSalesComparison,
+        getManagerPerformance,
+        getOrderStatistics
+      } = useAPI()
       return {
         getAnalytics,
         getOrders,
         getTopProducts,
         getMonthlyRevenue,
         getSalesComparison,
-        getManagerPerformance
+        getManagerPerformance,
+        getOrderStatistics
       }
     },
 
@@ -362,6 +395,54 @@ export const useDashboardStore = defineStore('dashboard', {
         accountManager: null,
         customStartDate: null,
         customEndDate: null,
+      }
+    },
+
+    async fetchOrderStatistics() {
+      this.loading.orderStatistics = true
+
+      try {
+        const api = this._getAPI()
+        const params = {
+          filterType: this.orderStatisticsFilters.filterType,
+          filterValue: this.orderStatisticsFilters.filterValue,
+          startDate: this.orderStatisticsFilters.startDate,
+          endDate: this.orderStatisticsFilters.endDate,
+          compare: this.orderStatisticsFilters.compare,
+          compareFilterType: this.orderStatisticsFilters.compareFilterType,
+          compareFilterValue: this.orderStatisticsFilters.compareFilterValue,
+          compareStartDate: this.orderStatisticsFilters.compareStartDate,
+          compareEndDate: this.orderStatisticsFilters.compareEndDate,
+        }
+
+        console.log('[dashboard] fetchOrderStatistics with params:', params)
+
+        const response = await api.getOrderStatistics(params)
+
+        // Update order statistics state
+        this.orderStatistics = {
+          totalOrders: response.total_orders || 0,
+          totalRevenue: response.total_revenue || 0,
+          categories: response.categories || [],
+          compareTotalOrders: response.compare_total_orders || 0,
+          compareTotalRevenue: response.compare_total_revenue || 0,
+          comparisonSummary: response.comparison_summary || null,
+          periodLabel: response.period_label || '',
+          comparePeriodLabel: response.compare_period_label || '',
+        }
+
+        console.debug('[dashboard] orderStatistics fetched:', {
+          totalOrders: this.orderStatistics.totalOrders,
+          categoriesCount: this.orderStatistics.categories.length,
+          hasComparison: !!response.comparison_summary,
+          periodLabel: this.orderStatistics.periodLabel,
+          comparePeriodLabel: this.orderStatistics.comparePeriodLabel
+        })
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch order statistics:', error)
+      } finally {
+        this.loading.orderStatistics = false
       }
     },
   },
