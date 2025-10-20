@@ -4,20 +4,11 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
 
 <template>
   <!-- Dashboard -->
-  <!-- <VerticalNavLink
-    :item="{
-      title: 'Main Dashboard',
-      icon: 'nu-dashboard',
-      to: '/dashboard',
-    }"
-  /> -->
-
-  <!-- New Dashboard -->
   <VerticalNavLink
     :item="{
       title: 'Main Dashboard',
       icon: 'bx-bar-chart-alt-2',
-      to: '/dashboard-new',
+      to: '/dashboard',
     }"
   />
 

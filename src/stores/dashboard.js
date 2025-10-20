@@ -18,11 +18,13 @@ export const useDashboardStore = defineStore('dashboard', {
     recentOrders: [],
     topProducts: [],
     monthlyRevenue: [],
+    monthlyRevenueComparison: [], // For comparison data
     salesComparison: {
       currentMonth: 0,
       previousMonth: 0,
       growth: 0,
     },
+    revenueComparisonSummary: null, // Summary for chart comparison
     managerPerformance: [],
     loading: {
       stats: false,
@@ -38,6 +40,17 @@ export const useDashboardStore = defineStore('dashboard', {
       accountManager: null,
       customStartDate: null,
       customEndDate: null,
+    },
+    // Revenue chart specific filters
+    revenueFilters: {
+      filterType: 'year', // 'month', 'year', 'range'
+      filterValue: null, // specific month (YYYY-MM) or year (YYYY)
+      startDate: null,
+      endDate: null,
+      compare: false,
+      compareWith: 'previous', // 'previous', 'custom'
+      compareStart: null,
+      compareEnd: null,
     },
   }),
 
@@ -67,6 +80,10 @@ export const useDashboardStore = defineStore('dashboard', {
 
     setFilters(filters) {
       this.filters = { ...this.filters, ...filters }
+    },
+
+    setRevenueFilters(filters) {
+      this.revenueFilters = { ...this.revenueFilters, ...filters }
     },
 
     async fetchDashboardStats(refresh = false) {
@@ -166,14 +183,48 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    async fetchMonthlyRevenue() {
+    async fetchMonthlyRevenue(useRevenueFilters = true) {
       this.loading.revenue = true
 
       try {
-        const params = this.buildAPIParams()
         const api = this._getAPI()
+        let params = {}
+
+        // Use revenue-specific filters if enabled
+        if (useRevenueFilters) {
+          params = {
+            filter_type: this.revenueFilters.filterType,
+            filter_value: this.revenueFilters.filterValue,
+            start_date: this.revenueFilters.startDate,
+            end_date: this.revenueFilters.endDate,
+            compare: this.revenueFilters.compare,
+            compare_with: this.revenueFilters.compareWith,
+            compare_start: this.revenueFilters.compareStart,
+            compare_end: this.revenueFilters.compareEnd,
+          }
+        } else {
+          params = this.buildAPIParams()
+        }
+
         const response = await api.getMonthlyRevenue(params)
+
+        // Handle response structure
         this.monthlyRevenue = response.data || []
+
+        // Store comparison data if present
+        if (response.compare_data) {
+          this.monthlyRevenueComparison = response.compare_data
+          this.revenueComparisonSummary = response.comparison_summary || null
+        } else {
+          this.monthlyRevenueComparison = []
+          this.revenueComparisonSummary = null
+        }
+
+        console.debug('[dashboard] monthlyRevenue fetched:', {
+          count: this.monthlyRevenue.length,
+          hasComparison: !!response.compare_data,
+          summary: this.revenueComparisonSummary
+        })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch monthly revenue:', error)

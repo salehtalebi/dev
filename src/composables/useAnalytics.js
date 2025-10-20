@@ -16,43 +16,58 @@ export function useAnalytics() {
     // Computed properties for dashboard data
     const dashboardStats = computed(() => dashboardStore.stats)
     const monthlyRevenue = computed(() => dashboardStore.monthlyRevenue)
+    const monthlyRevenueComparison = computed(() => dashboardStore.monthlyRevenueComparison)
+    const revenueComparisonSummary = computed(() => dashboardStore.revenueComparisonSummary)
     const topProducts = computed(() => dashboardStore.topProducts)
     const salesComparison = computed(() => dashboardStore.salesComparison)
     const managerPerformance = computed(() => dashboardStore.managerPerformance)
     const recentOrders = computed(() => dashboardStore.recentOrders)
+    const revenueFilters = computed(() => dashboardStore.revenueFilters)
     // Derived convenience values (optional export for components needing direct access)
     const totalOrders = computed(() => dashboardStore.stats.totalOrders || 0)
 
     // Chart data formatters
     const getRevenueChartData = computed(() => {
+        const hasComparison = monthlyRevenueComparison.value && monthlyRevenueComparison.value.length > 0
+
         if (!monthlyRevenue.value || monthlyRevenue.value.length === 0) {
             return {
                 categories: [],
                 series: [{
-                    name: 'Monthly Revenue',
+                    name: 'Revenue',
                     data: []
                 }]
             }
         }
 
-        const categories = monthlyRevenue.value.map(item => {
-            const date = new Date(item.month + '-01')
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short'
-            })
-        })
+        // Extract categories from primary data
+        const categories = monthlyRevenue.value.map(item => item.label || item.period)
 
-        const data = monthlyRevenue.value.map(item =>
+        // Primary series
+        const primaryData = monthlyRevenue.value.map(item =>
             parseFloat(item.revenue || 0)
         )
 
+        const series = [{
+            name: hasComparison ? 'Current Period' : 'Revenue',
+            data: primaryData
+        }]
+
+        // Add comparison series if available
+        if (hasComparison) {
+            const comparisonData = monthlyRevenueComparison.value.map(item =>
+                parseFloat(item.revenue || 0)
+            )
+
+            series.push({
+                name: 'Comparison Period',
+                data: comparisonData
+            })
+        }
+
         return {
             categories,
-            series: [{
-                name: 'Monthly Revenue',
-                data
-            }]
+            series
         }
     })
 
@@ -158,6 +173,20 @@ export function useAnalytics() {
         return fetchDashboardData(true)
     }
 
+    const refreshRevenueData = async () => {
+        loading.value = true
+        try {
+            await dashboardStore.fetchMonthlyRevenue(true)
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const updateRevenueFilters = (filters) => {
+        dashboardStore.setRevenueFilters(filters)
+        return refreshRevenueData()
+    }
+
     // Auto fetch on mount only if not initialized
     onMounted(() => {
         if (!isInitialized && !isCurrentlyFetching) {
@@ -173,10 +202,13 @@ export function useAnalytics() {
         // Dashboard stats
         dashboardStats,
         monthlyRevenue,
+        monthlyRevenueComparison,
+        revenueComparisonSummary,
         topProducts,
         salesComparison,
         managerPerformance,
         recentOrders,
+        revenueFilters,
 
         // Chart data
         getRevenueChartData,
@@ -187,6 +219,8 @@ export function useAnalytics() {
 
         // Methods
         fetchDashboardData,
-        refreshData
+        refreshData,
+        refreshRevenueData,
+        updateRevenueFilters
     }
 }

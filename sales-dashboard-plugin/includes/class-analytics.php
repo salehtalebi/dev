@@ -633,47 +633,353 @@ class Sales_Dashboard_Analytics {
     }
     
     /**
-     * Get monthly revenue data
+     * Get monthly revenue data with filtering and comparison support
+     * Optimized version with better performance and simpler comparison logic
      */
     public function get_monthly_revenue($request) {
         try {
-            $months = intval($request->get_param('months') ?: 12);
+            // Get filter parameters (support both camelCase and snake_case)
+            $filter_type = $request->get_param('filterType') ?: $request->get_param('filter_type') ?: 'year';
+            $filter_value = $request->get_param('filterValue') ?: $request->get_param('filter_value');
+            $compare = $request->get_param('compare') === 'true' || $request->get_param('compare') === true;
+            $compare_filter_value = $request->get_param('compareFilterValue') ?: $request->get_param('compare_filter_value');
             
-            // Use WC_Order_Query for better compatibility
-            $results = array();
+            // Log for debugging
+            error_log("Monthly Revenue Request - filter_type: {$filter_type}, filter_value: {$filter_value}, compare: " . ($compare ? 'true' : 'false'));
             
-            for ($i = 0; $i < $months; $i++) {
-                $month_start = date('Y-m-01 00:00:00', strtotime("-$i months"));
-                $month_end = date('Y-m-t 23:59:59', strtotime("-$i months"));
-                $month_key = date('Y-m', strtotime("-$i months"));
-                
-                $orders = wc_get_orders(array(
-                    'status' => array('wc-completed', 'wc-processing'),
-                    'date_created' => $month_start . '...' . $month_end,
-                    'limit' => -1,
-                    'return' => 'objects'
-                ));
-                
-                $revenue = 0;
-                foreach ($orders as $order) {
-                    $revenue += $order->get_total();
-                }
-                
-                $results[] = array(
-                    'month' => $month_key,
-                    'revenue' => $revenue
-                );
+            // Calculate date range based on filter type
+            $date_range = $this->calculate_simple_date_range($filter_type, $filter_value);
+            
+            if (!$date_range) {
+                error_log("Monthly Revenue - Failed to calculate date range");
+                return rest_ensure_response(array('data' => array()));
             }
             
-            // Reverse to get chronological order
-            $results = array_reverse($results);
+            error_log("Monthly Revenue - Date range: " . $date_range['start'] . " to " . $date_range['end'] . ", group_by: " . $date_range['group_by']);
             
-            return rest_ensure_response(array('data' => $results));
+            // Get primary period data with limit to prevent crashes
+            $primary_data = $this->get_revenue_for_period_optimized(
+                $date_range['start'],
+                $date_range['end'],
+                $date_range['group_by']
+            );
+            
+            error_log("Monthly Revenue - Primary data count: " . count($primary_data));
+            
+            $response = array(
+                'data' => $primary_data,
+                'filter_type' => $filter_type,
+                'period_start' => $date_range['start'],
+                'period_end' => $date_range['end']
+            );
+            
+            // If comparison is enabled, get comparison period data
+            if ($compare) {
+                // If compare_filter_value is not provided, calculate it automatically
+                if (!$compare_filter_value) {
+                    $compare_with = $request->get_param('compareWith') ?: $request->get_param('compare_with') ?: 'last_year';
+                    $years_back = ($compare_with === 'two_years_ago') ? 2 : 1;
+                    
+                    if ($filter_type === 'year' && $filter_value) {
+                        $compare_filter_value = (intval($filter_value) - $years_back);
+                    } else if ($filter_type === 'month' && $filter_value) {
+                        // format: YYYY-MM
+                        list($year, $month) = explode('-', $filter_value);
+                        $compare_year = intval($year) - $years_back;
+                        $compare_filter_value = $compare_year . '-' . $month;
+                    }
+                    
+                    error_log("Monthly Revenue - Auto-calculated compare_filter_value: {$compare_filter_value}");
+                }
+                
+                if ($compare_filter_value) {
+                    $compare_range = $this->calculate_simple_date_range($filter_type, $compare_filter_value);
+                    
+                    if ($compare_range) {
+                        error_log("Monthly Revenue - Compare range: " . $compare_range['start'] . " to " . $compare_range['end']);
+                        
+                        $compare_data = $this->get_revenue_for_period_optimized(
+                            $compare_range['start'],
+                            $compare_range['end'],
+                            $compare_range['group_by']
+                        );
+                        
+                        error_log("Monthly Revenue - Compare data count: " . count($compare_data));
+                        
+                        $response['compare_data'] = $compare_data;
+                        $response['compare_start'] = $compare_range['start'];
+                        $response['compare_end'] = $compare_range['end'];
+                        
+                        // Calculate comparison metrics
+                        $primary_total = array_sum(array_column($primary_data, 'revenue'));
+                        $compare_total = array_sum(array_column($compare_data, 'revenue'));
+                        $growth = $compare_total > 0 ? (($primary_total - $compare_total) / $compare_total) * 100 : 0;
+                        
+                        $response['comparison_summary'] = array(
+                            'primary_total' => floatval($primary_total),
+                            'compare_total' => floatval($compare_total),
+                            'growth' => round($growth, 2),
+                            'difference' => floatval($primary_total - $compare_total)
+                        );
+                    }
+                }
+            }
+            
+            return rest_ensure_response($response);
             
         } catch (Exception $e) {
             error_log('Monthly Revenue Error: ' . $e->getMessage());
-            return rest_ensure_response(array('data' => array()));
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            return rest_ensure_response(array('data' => array(), 'error' => $e->getMessage()));
         }
+    }
+    
+    /**
+     * Calculate date range - simplified version
+     */
+    private function calculate_simple_date_range($filter_type, $filter_value) {
+        $range = array();
+        
+        if (!$filter_value) {
+            // Default to current year if no value provided
+            $filter_value = date('Y');
+            $filter_type = 'year';
+        }
+        
+        switch ($filter_type) {
+            case 'month':
+                // Filter by specific month (format: YYYY-MM)
+                $range['start'] = date('Y-m-01 00:00:00', strtotime($filter_value . '-01'));
+                $range['end'] = date('Y-m-t 23:59:59', strtotime($filter_value . '-01'));
+                $range['group_by'] = 'day';
+                break;
+                
+            case 'year':
+                // Filter by specific year
+                $range['start'] = $filter_value . '-01-01 00:00:00';
+                $range['end'] = $filter_value . '-12-31 23:59:59';
+                $range['group_by'] = 'month';
+                break;
+                
+            default:
+                return null;
+        }
+        
+        return $range;
+    }
+    
+    /**
+     * Get revenue data for a specific period - optimized version
+     * Uses direct database queries for better performance
+     */
+    private function get_revenue_for_period_optimized($start_date, $end_date, $group_by = 'month') {
+        global $wpdb;
+        
+        try {
+            // Use direct database query for better performance
+            $table_orders = $wpdb->prefix . 'wc_orders';
+            $table_meta = $wpdb->prefix . 'wc_orders_meta';
+            
+            // Check if tables exist (for WC HPOS)
+            $hpos_enabled = get_option('woocommerce_custom_orders_table_enabled') === 'yes';
+            
+            if ($hpos_enabled && $wpdb->get_var("SHOW TABLES LIKE '{$table_orders}'") == $table_orders) {
+                // Use HPOS tables
+                $results = $this->get_revenue_hpos($start_date, $end_date, $group_by);
+            } else {
+                // Use posts table (legacy)
+                $results = $this->get_revenue_posts($start_date, $end_date, $group_by);
+            }
+            
+            return $results;
+            
+        } catch (Exception $e) {
+            error_log('Revenue query error: ' . $e->getMessage());
+            // Fallback to WC API method
+            return $this->get_revenue_for_period_fallback($start_date, $end_date, $group_by);
+        }
+    }
+    
+    /**
+     * Get revenue using HPOS tables
+     */
+    private function get_revenue_hpos($start_date, $end_date, $group_by) {
+        global $wpdb;
+        
+        $table_orders = $wpdb->prefix . 'wc_orders';
+        
+        $date_format = $group_by === 'month' ? '%Y-%m' : '%Y-%m-%d';
+        $label_format = $group_by === 'month' ? '%b %Y' : '%b %d';
+        
+        $query = $wpdb->prepare("
+            SELECT 
+                DATE_FORMAT(date_created_gmt, %s) as period,
+                DATE_FORMAT(date_created_gmt, %s) as label,
+                SUM(total_amount) as revenue,
+                COUNT(*) as orders_count
+            FROM {$table_orders}
+            WHERE status IN ('wc-completed', 'wc-processing')
+                AND date_created_gmt >= %s
+                AND date_created_gmt <= %s
+            GROUP BY period
+            ORDER BY period ASC
+            LIMIT 1000
+        ", $date_format, $label_format, $start_date, $end_date);
+        
+        $results = $wpdb->get_results($query, ARRAY_A);
+        
+        if (!$results) {
+            return array();
+        }
+        
+        // Convert to expected format
+        $formatted = array();
+        foreach ($results as $row) {
+            $formatted[] = array(
+                'period' => $row['period'],
+                'label' => $row['label'],
+                'revenue' => floatval($row['revenue']),
+                'orders_count' => intval($row['orders_count'])
+            );
+        }
+        
+        return $this->fill_missing_periods_optimized($formatted, $start_date, $end_date, $group_by);
+    }
+    
+    /**
+     * Get revenue using posts table (legacy)
+     */
+    private function get_revenue_posts($start_date, $end_date, $group_by) {
+        global $wpdb;
+        
+        $date_format = $group_by === 'month' ? '%Y-%m' : '%Y-%m-%d';
+        $label_format = $group_by === 'month' ? '%b %Y' : '%b %d';
+        
+        $query = $wpdb->prepare("
+            SELECT 
+                DATE_FORMAT(p.post_date, %s) as period,
+                DATE_FORMAT(p.post_date, %s) as label,
+                SUM(CAST(pm.meta_value AS DECIMAL(10,2))) as revenue,
+                COUNT(*) as orders_count
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total'
+            WHERE p.post_type = 'shop_order'
+                AND p.post_status IN ('wc-completed', 'wc-processing')
+                AND p.post_date >= %s
+                AND p.post_date <= %s
+            GROUP BY period
+            ORDER BY period ASC
+            LIMIT 1000
+        ", $date_format, $label_format, $start_date, $end_date);
+        
+        $results = $wpdb->get_results($query, ARRAY_A);
+        
+        if (!$results) {
+            return array();
+        }
+        
+        // Convert to expected format
+        $formatted = array();
+        foreach ($results as $row) {
+            $formatted[] = array(
+                'period' => $row['period'],
+                'label' => $row['label'],
+                'revenue' => floatval($row['revenue']),
+                'orders_count' => intval($row['orders_count'])
+            );
+        }
+        
+        return $this->fill_missing_periods_optimized($formatted, $start_date, $end_date, $group_by);
+    }
+    
+    /**
+     * Fallback method using WC API (slower but more compatible)
+     */
+    private function get_revenue_for_period_fallback($start_date, $end_date, $group_by) {
+        // Limit orders to prevent memory issues
+        $orders = wc_get_orders(array(
+            'status' => array('wc-completed', 'wc-processing'),
+            'date_created' => $start_date . '...' . $end_date,
+            'limit' => 1000, // Limit to prevent crashes
+            'return' => 'objects'
+        ));
+        
+        // Group orders by date
+        $grouped_data = array();
+        
+        foreach ($orders as $order) {
+            $order_date = $order->get_date_created();
+            
+            if ($group_by === 'month') {
+                $key = $order_date->format('Y-m');
+                $label = $order_date->format('M Y');
+            } else {
+                $key = $order_date->format('Y-m-d');
+                $label = $order_date->format('M d');
+            }
+            
+            if (!isset($grouped_data[$key])) {
+                $grouped_data[$key] = array(
+                    'period' => $key,
+                    'label' => $label,
+                    'revenue' => 0,
+                    'orders_count' => 0
+                );
+            }
+            
+            $grouped_data[$key]['revenue'] += floatval($order->get_total());
+            $grouped_data[$key]['orders_count']++;
+        }
+        
+        // Sort by period
+        ksort($grouped_data);
+        
+        return $this->fill_missing_periods_optimized(array_values($grouped_data), $start_date, $end_date, $group_by);
+    }
+    
+    /**
+     * Fill missing periods - optimized version
+     */
+    private function fill_missing_periods_optimized($data, $start_date, $end_date, $group_by) {
+        $existing_periods = array();
+        foreach ($data as $item) {
+            $existing_periods[$item['period']] = $item;
+        }
+        
+        $results = array();
+        $current = strtotime($start_date);
+        $end = strtotime($end_date);
+        
+        // Limit iterations to prevent infinite loops
+        $max_iterations = $group_by === 'month' ? 120 : 366; // max 10 years or 1 year
+        $iteration = 0;
+        
+        while ($current <= $end && $iteration < $max_iterations) {
+            if ($group_by === 'month') {
+                $key = date('Y-m', $current);
+                $label = date('M Y', $current);
+                $current = strtotime('+1 month', $current);
+            } else {
+                $key = date('Y-m-d', $current);
+                $label = date('M d', $current);
+                $current = strtotime('+1 day', $current);
+            }
+            
+            if (isset($existing_periods[$key])) {
+                $results[] = $existing_periods[$key];
+            } else {
+                $results[] = array(
+                    'period' => $key,
+                    'label' => $label,
+                    'revenue' => 0,
+                    'orders_count' => 0
+                );
+            }
+            
+            $iteration++;
+        }
+        
+        return $results;
     }
     
     /**
