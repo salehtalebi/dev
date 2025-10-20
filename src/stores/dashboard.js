@@ -19,6 +19,8 @@ export const useDashboardStore = defineStore('dashboard', {
     topProducts: [],
     monthlyRevenue: [],
     monthlyRevenueComparison: [], // For comparison data
+    revenuePeriodLabel: '', // Current period label (e.g., "October 2024")
+    revenueComparePeriodLabel: '', // Compare period label (e.g., "January 2024")
     salesComparison: {
       currentMonth: 0,
       previousMonth: 0,
@@ -43,14 +45,16 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     // Revenue chart specific filters
     revenueFilters: {
-      filterType: 'year', // 'month', 'year', 'range'
+      filterType: 'year', // 'month', 'year'
       filterValue: null, // specific month (YYYY-MM) or year (YYYY)
-      startDate: null,
-      endDate: null,
       compare: false,
-      compareWith: 'previous', // 'previous', 'custom'
-      compareStart: null,
-      compareEnd: null,
+      compareFilterType: null, // 'month', 'year' (for custom comparison)
+      compareFilterValue: null, // specific month (YYYY-MM) or year (YYYY) for comparison
+    },
+    // Products chart specific filters
+    productsFilters: {
+      filterType: 'year', // 'month', 'year'
+      filterValue: null, // specific month (YYYY-MM) or year (YYYY)
     },
   }),
 
@@ -84,6 +88,10 @@ export const useDashboardStore = defineStore('dashboard', {
 
     setRevenueFilters(filters) {
       this.revenueFilters = { ...this.revenueFilters, ...filters }
+    },
+
+    setProductsFilters(filters) {
+      this.productsFilters = { ...this.productsFilters, ...filters }
     },
 
     async fetchDashboardStats(refresh = false) {
@@ -146,15 +154,30 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    async fetchTopProducts() {
+    async fetchTopProducts(useProductsFilters = true) {
       this.loading.products = true
 
       try {
-        const params = this.buildAPIParams()
         const api = this._getAPI()
+        let params = {}
+
+        // Use products-specific filters if enabled
+        if (useProductsFilters) {
+          params = {
+            filterType: this.productsFilters.filterType,
+            filterValue: this.productsFilters.filterValue,
+          }
+          console.log('[dashboard] fetchTopProducts with filters:', params)
+        } else {
+          params = this.buildAPIParams()
+        }
+
         const response = await api.getTopProducts(params)
-        // Support different possible response shapes: array, { data: [] }, { products: [] }, { top_products: [] }
+        console.log('[dashboard] fetchTopProducts response:', response)
+
+        // Support different possible response shapes
         let productsRaw = []
+
         if (Array.isArray(response)) {
           productsRaw = response
         } else if (Array.isArray(response?.data)) {
@@ -164,17 +187,23 @@ export const useDashboardStore = defineStore('dashboard', {
         } else if (Array.isArray(response?.top_products)) {
           productsRaw = response.top_products
         }
-        // Normalize field names to those expected by analytics components
+
+        // Normalize field names
         const products = productsRaw.map(p => ({
           product_id: p.product_id || p.id,
           product_name: p.product_name || p.name || `Product ${p.product_id || p.id}`,
           total_sold: p.total_sold || p.total_quantity || p.quantity || 0,
           total_revenue: p.total_revenue || p.revenue || p.total_revenue_usd || p.total || 0,
           category_name: p.category_name || p.category || p.product_category,
-          price: p.price || p.unit_price || 0
+          price: p.price || p.unit_price || 0,
         }))
+
         this.topProducts = products
-        console.debug('[dashboard] topProducts fetched:', { count: products.length, sample: products.slice(0, 3) })
+
+        console.debug('[dashboard] topProducts fetched:', {
+          count: products.length,
+          sample: products.slice(0, 3),
+        })
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch top products:', error)
@@ -193,15 +222,13 @@ export const useDashboardStore = defineStore('dashboard', {
         // Use revenue-specific filters if enabled
         if (useRevenueFilters) {
           params = {
-            filter_type: this.revenueFilters.filterType,
-            filter_value: this.revenueFilters.filterValue,
-            start_date: this.revenueFilters.startDate,
-            end_date: this.revenueFilters.endDate,
+            filterType: this.revenueFilters.filterType,
+            filterValue: this.revenueFilters.filterValue,
             compare: this.revenueFilters.compare,
-            compare_with: this.revenueFilters.compareWith,
-            compare_start: this.revenueFilters.compareStart,
-            compare_end: this.revenueFilters.compareEnd,
+            compareFilterType: this.revenueFilters.compareFilterType,
+            compareFilterValue: this.revenueFilters.compareFilterValue,
           }
+          console.log('[dashboard] fetchMonthlyRevenue with params:', params)
         } else {
           params = this.buildAPIParams()
         }
@@ -210,20 +237,25 @@ export const useDashboardStore = defineStore('dashboard', {
 
         // Handle response structure
         this.monthlyRevenue = response.data || []
+        this.revenuePeriodLabel = response.period_label || ''
 
         // Store comparison data if present
         if (response.compare_data) {
           this.monthlyRevenueComparison = response.compare_data
           this.revenueComparisonSummary = response.comparison_summary || null
+          this.revenueComparePeriodLabel = response.compare_period_label || ''
         } else {
           this.monthlyRevenueComparison = []
           this.revenueComparisonSummary = null
+          this.revenueComparePeriodLabel = ''
         }
 
         console.debug('[dashboard] monthlyRevenue fetched:', {
           count: this.monthlyRevenue.length,
           hasComparison: !!response.compare_data,
-          summary: this.revenueComparisonSummary
+          summary: this.revenueComparisonSummary,
+          periodLabel: this.revenuePeriodLabel,
+          comparePeriodLabel: this.revenueComparePeriodLabel
         })
       } catch (error) {
         this.error = error.message

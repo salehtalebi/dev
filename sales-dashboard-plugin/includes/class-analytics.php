@@ -360,99 +360,134 @@ class Sales_Dashboard_Analytics {
      */
     public function get_top_products($request) {
         try {
-            // Ignore provided period for now (requirement: show top selling products across all data)
-            $period = 'all';
-            $limit = min($request->get_param('limit') ?: 10, 50); // allow up to 50 in memory aggregation
-
-            // We'll aggregate across entire order history, but in batches to control memory.
-            // Strategy: iterate through order IDs in descending date order, accumulate stats until we've
-            // covered enough orders or hit a safety cap (e.g., 5000 orders) to avoid timeouts.
-
-            $product_stats = array();
-            $page = 1;
-            $batch_limit = 250; // smaller batch for history scan
-            $processed_orders = 0;
-            $max_orders = 5000; // safety cap
-
-            do {
-                $orders = wc_get_orders(array(
-                    'status' => array('wc-completed', 'wc-processing'),
-                    'orderby' => 'date',
-                    'order' => 'DESC',
-                    'limit' => $batch_limit,
-                    'page' => $page,
-                    'return' => 'objects'
-                ));
-
-                if (empty($orders)) break;
-
-                foreach ($orders as $order) {
-                    $processed_orders++;
-                    foreach ($order->get_items() as $item) {
-                        $product_id = $item->get_product_id();
-                        $quantity = $item->get_quantity();
-                        $total = $item->get_total();
-
-                        if (!isset($product_stats[$product_id])) {
-                            $product_stats[$product_id] = array(
-                                'product_id' => $product_id,
-                                'total_quantity' => 0,
-                                'total_revenue' => 0,
-                                'orders_count' => 0
-                            );
-                        }
-
-                        $product_stats[$product_id]['total_quantity'] += $quantity;
-                        $product_stats[$product_id]['total_revenue'] += $total;
-                        $product_stats[$product_id]['orders_count']++;
-                    }
-                }
-
-                $page++;
-
-                if (function_exists('gc_collect_cycles')) {
-                    gc_collect_cycles();
-                }
-            } while (count($orders) === $batch_limit && $processed_orders < $max_orders);
+            error_log('Top Products - Request params: ' . print_r($request->get_params(), true));
             
-            // Sort by revenue and limit
-            uasort($product_stats, function($a, $b) {
-                return $b['total_revenue'] <=> $a['total_revenue'];
-            });
+            // Get filter parameters (support both camelCase and snake_case)
+            $filter_type = $request->get_param('filterType') ?: $request->get_param('filter_type') ?: 'all';
+            $filter_value = $request->get_param('filterValue') ?: $request->get_param('filter_value');
+            $limit = min($request->get_param('limit') ?: 10, 50);
             
-            $product_stats = array_slice($product_stats, 0, $limit);
+            error_log("Top Products - filter_type: {$filter_type}, filter_value: {$filter_value}");
             
-            // Format with product data
-            $formatted_products = array();
-            foreach ($product_stats as $product_data) {
-                $product = wc_get_product($product_data['product_id']);
-                if ($product) {
-                    $formatted_products[] = array(
-                        'product_id' => $product_data['product_id'],
-                        'name' => $product->get_name(),
-                        'sku' => $product->get_sku(),
-                        'price' => $product->get_price(),
-                        'total_quantity' => (int) $product_data['total_quantity'],
-                        'total_revenue' => (float) $product_data['total_revenue'],
-                        'orders_count' => (int) $product_data['orders_count'],
-                        'image_url' => wp_get_attachment_url($product->get_image_id())
-                    );
-                }
-            }
+            // Calculate date range for period
+            $date_range = $this->calculate_simple_date_range($filter_type, $filter_value);
             
-            return array(
-                'top_products' => $formatted_products,
-                'period' => $period,
-                'processed_orders' => $processed_orders
+            // Get products data for the period
+            $products = $this->get_top_products_for_period(
+                $date_range['start'],
+                $date_range['end'],
+                $limit
             );
+            
+            $response = array(
+                'products' => $products,
+                'filter_type' => $filter_type,
+                'period_start' => $date_range['start'],
+                'period_end' => $date_range['end']
+            );
+            
+            return rest_ensure_response($response);
             
         } catch (Exception $e) {
             error_log('Top Products Error: ' . $e->getMessage());
-            return array(
-                'top_products' => array(),
-                'period' => $period
-            );
+            return rest_ensure_response(array(
+                'products' => array(),
+                'error' => $e->getMessage()
+            ));
         }
+    }
+    
+    /**
+     * Get top products for a specific period
+     */
+    private function get_top_products_for_period($start_date, $end_date, $limit = 10) {
+        global $wpdb;
+        
+        $product_stats = array();
+        
+        // Check if HPOS is enabled
+        $hpos_enabled = class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
+                       method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
+                       \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+        
+        if ($hpos_enabled) {
+            // HPOS Query
+            $query = $wpdb->prepare("
+                SELECT 
+                    oitemmeta_product.meta_value as product_id,
+                    SUM(oitemmeta_qty.meta_value) as total_quantity,
+                    SUM(oitemmeta_total.meta_value) as total_revenue,
+                    COUNT(DISTINCT o.id) as orders_count
+                FROM {$wpdb->prefix}wc_orders o
+                INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON o.id = oi.order_id
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
+                    ON oi.order_item_id = oitemmeta_product.order_item_id 
+                    AND oitemmeta_product.meta_key = '_product_id'
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
+                    ON oi.order_item_id = oitemmeta_qty.order_item_id 
+                    AND oitemmeta_qty.meta_key = '_qty'
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
+                    ON oi.order_item_id = oitemmeta_total.order_item_id 
+                    AND oitemmeta_total.meta_key = '_line_total'
+                WHERE o.status IN ('wc-completed', 'wc-processing')
+                    AND o.date_created_gmt >= %s
+                    AND o.date_created_gmt < %s
+                    AND oi.order_item_type = 'line_item'
+                GROUP BY product_id
+                ORDER BY total_revenue DESC
+                LIMIT %d
+            ", $start_date, $end_date, $limit);
+        } else {
+            // Legacy Query
+            $query = $wpdb->prepare("
+                SELECT 
+                    oitemmeta_product.meta_value as product_id,
+                    SUM(oitemmeta_qty.meta_value) as total_quantity,
+                    SUM(oitemmeta_total.meta_value) as total_revenue,
+                    COUNT(DISTINCT p.ID) as orders_count
+                FROM {$wpdb->posts} p
+                INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON p.ID = oi.order_id
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
+                    ON oi.order_item_id = oitemmeta_product.order_item_id 
+                    AND oitemmeta_product.meta_key = '_product_id'
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
+                    ON oi.order_item_id = oitemmeta_qty.order_item_id 
+                    AND oitemmeta_qty.meta_key = '_qty'
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
+                    ON oi.order_item_id = oitemmeta_total.order_item_id 
+                    AND oitemmeta_total.meta_key = '_line_total'
+                WHERE p.post_type = 'shop_order'
+                    AND p.post_status IN ('wc-completed', 'wc-processing')
+                    AND p.post_date >= %s
+                    AND p.post_date < %s
+                    AND oi.order_item_type = 'line_item'
+                GROUP BY product_id
+                ORDER BY total_revenue DESC
+                LIMIT %d
+            ", $start_date, $end_date, $limit);
+        }
+        
+        $results = $wpdb->get_results($query);
+        
+        // Format with product data
+        $formatted_products = array();
+        foreach ($results as $row) {
+            $product = wc_get_product($row->product_id);
+            if ($product) {
+                $formatted_products[] = array(
+                    'product_id' => intval($row->product_id),
+                    'product_name' => $product->get_name(),
+                    'sku' => $product->get_sku(),
+                    'price' => floatval($product->get_price()),
+                    'total_sold' => intval($row->total_quantity),
+                    'total_revenue' => floatval($row->total_revenue),
+                    'orders_count' => intval($row->orders_count),
+                    'image_url' => wp_get_attachment_url($product->get_image_id())
+                );
+            }
+        }
+        
+        return $formatted_products;
     }
     
     /**
@@ -634,7 +669,7 @@ class Sales_Dashboard_Analytics {
     
     /**
      * Get monthly revenue data with filtering and comparison support
-     * Optimized version with better performance and simpler comparison logic
+     * Optimized version with better performance and flexible comparison logic
      */
     public function get_monthly_revenue($request) {
         try {
@@ -642,10 +677,16 @@ class Sales_Dashboard_Analytics {
             $filter_type = $request->get_param('filterType') ?: $request->get_param('filter_type') ?: 'year';
             $filter_value = $request->get_param('filterValue') ?: $request->get_param('filter_value');
             $compare = $request->get_param('compare') === 'true' || $request->get_param('compare') === true;
+            
+            // New flexible comparison parameters
+            $compare_filter_type = $request->get_param('compareFilterType') ?: $request->get_param('compare_filter_type');
             $compare_filter_value = $request->get_param('compareFilterValue') ?: $request->get_param('compare_filter_value');
             
             // Log for debugging
             error_log("Monthly Revenue Request - filter_type: {$filter_type}, filter_value: {$filter_value}, compare: " . ($compare ? 'true' : 'false'));
+            if ($compare) {
+                error_log("Monthly Revenue - Compare with filter_type: {$compare_filter_type}, filter_value: {$compare_filter_value}");
+            }
             
             // Calculate date range based on filter type
             $date_range = $this->calculate_simple_date_range($filter_type, $filter_value);
@@ -666,17 +707,26 @@ class Sales_Dashboard_Analytics {
             
             error_log("Monthly Revenue - Primary data count: " . count($primary_data));
             
+            // Generate period label
+            $period_label = $this->format_period_label($filter_type, $filter_value);
+            
             $response = array(
                 'data' => $primary_data,
                 'filter_type' => $filter_type,
                 'period_start' => $date_range['start'],
-                'period_end' => $date_range['end']
+                'period_end' => $date_range['end'],
+                'period_label' => $period_label
             );
             
-            // If comparison is enabled, get comparison period data
+            // If comparison is enabled
             if ($compare) {
-                // If compare_filter_value is not provided, calculate it automatically
+                // Use provided compare parameters or auto-calculate
+                if (!$compare_filter_type) {
+                    $compare_filter_type = $filter_type;
+                }
+                
                 if (!$compare_filter_value) {
+                    // Auto-calculate: default to last year
                     $compare_with = $request->get_param('compareWith') ?: $request->get_param('compare_with') ?: 'last_year';
                     $years_back = ($compare_with === 'two_years_ago') ? 2 : 1;
                     
@@ -693,7 +743,7 @@ class Sales_Dashboard_Analytics {
                 }
                 
                 if ($compare_filter_value) {
-                    $compare_range = $this->calculate_simple_date_range($filter_type, $compare_filter_value);
+                    $compare_range = $this->calculate_simple_date_range($compare_filter_type, $compare_filter_value);
                     
                     if ($compare_range) {
                         error_log("Monthly Revenue - Compare range: " . $compare_range['start'] . " to " . $compare_range['end']);
@@ -706,9 +756,13 @@ class Sales_Dashboard_Analytics {
                         
                         error_log("Monthly Revenue - Compare data count: " . count($compare_data));
                         
+                        // Generate compare period label
+                        $compare_period_label = $this->format_period_label($compare_filter_type, $compare_filter_value);
+                        
                         $response['compare_data'] = $compare_data;
                         $response['compare_start'] = $compare_range['start'];
                         $response['compare_end'] = $compare_range['end'];
+                        $response['compare_period_label'] = $compare_period_label;
                         
                         // Calculate comparison metrics
                         $primary_total = array_sum(array_column($primary_data, 'revenue'));
@@ -719,7 +773,9 @@ class Sales_Dashboard_Analytics {
                             'primary_total' => floatval($primary_total),
                             'compare_total' => floatval($compare_total),
                             'growth' => round($growth, 2),
-                            'difference' => floatval($primary_total - $compare_total)
+                            'difference' => floatval($primary_total - $compare_total),
+                            'period_label' => $period_label,
+                            'compare_period_label' => $compare_period_label
                         );
                     }
                 }
@@ -766,6 +822,37 @@ class Sales_Dashboard_Analytics {
         }
         
         return $range;
+    }
+    
+    /**
+     * Format period label for display
+     * Converts filter type and value to readable period name
+     * 
+     * @param string $filter_type Type of filter ('year' or 'month')
+     * @param string $filter_value Filter value (e.g., '2024' or '2024-10')
+     * @return string Formatted period label (e.g., '2024' or 'October 2024')
+     */
+    private function format_period_label($filter_type, $filter_value) {
+        if (empty($filter_value)) {
+            return '';
+        }
+        
+        switch ($filter_type) {
+            case 'month':
+                // Format: 2024-10 → October 2024
+                $date = DateTime::createFromFormat('Y-m', $filter_value);
+                if ($date) {
+                    return $date->format('F Y'); // e.g., "October 2024"
+                }
+                return $filter_value;
+                
+            case 'year':
+                // Format: 2024 → 2024
+                return $filter_value;
+                
+            default:
+                return $filter_value;
+        }
     }
     
     /**

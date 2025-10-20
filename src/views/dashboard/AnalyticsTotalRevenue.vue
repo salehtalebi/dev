@@ -72,12 +72,51 @@
           />
         </VCol>
 
-        <!-- Compare Period Selector (shown when compare is enabled) -->
-        <VCol v-if="localFilters.compare" cols="12" sm="4" md="2">
+        <!-- Compare Mode Selector (shown when compare is enabled) -->
+        <VCol v-if="localFilters.compare" cols="12" sm="4" md="3">
           <VSelect
-            v-model="localFilters.compareWith"
-            :items="compareWithOptions"
-            label="vs"
+            v-model="localFilters.compareMode"
+            :items="compareModeOptions"
+            label="Compare Mode"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onCompareModeChange"
+          />
+        </VCol>
+
+        <!-- Custom Compare Filter Type (shown when compareMode is 'custom') -->
+        <VCol v-if="localFilters.compare && localFilters.compareMode === 'custom'" cols="12" sm="4" md="2">
+          <VSelect
+            v-model="localFilters.compareFilterType"
+            :items="filterTypeOptions"
+            label="Compare Period"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Custom Month Selector (shown when compareMode is 'custom' and compareFilterType is 'month') -->
+        <VCol v-if="localFilters.compare && localFilters.compareMode === 'custom' && localFilters.compareFilterType === 'month'" cols="12" sm="4" md="3">
+          <VTextField
+            v-model="localFilters.compareFilterValue"
+            type="month"
+            label="Compare Month"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Custom Year Selector (shown when compareMode is 'custom' and compareFilterType is 'year') -->
+        <VCol v-if="localFilters.compare && localFilters.compareMode === 'custom' && localFilters.compareFilterType === 'year'" cols="12" sm="4" md="2">
+          <VSelect
+            v-model="localFilters.compareFilterValue"
+            :items="yearOptions"
+            label="Compare Year"
             density="compact"
             variant="outlined"
             hide-details
@@ -109,11 +148,11 @@
       <div v-if="localFilters.compare && comparisonSummary" class="mb-4">
         <VRow dense>
           <VCol cols="auto">
-            <div class="text-caption text-medium-emphasis">Current Period</div>
+            <div class="text-caption text-medium-emphasis">{{ currentPeriodLabel }}</div>
             <div class="text-subtitle-1 font-weight-medium">${{ formatCurrency(comparisonSummary.primary_total) }}</div>
           </VCol>
           <VCol cols="auto">
-            <div class="text-caption text-medium-emphasis">Compare Period</div>
+            <div class="text-caption text-medium-emphasis">{{ comparePeriodLabel }}</div>
             <div class="text-subtitle-1">${{ formatCurrency(comparisonSummary.compare_total) }}</div>
           </VCol>
           <VCol cols="auto">
@@ -178,7 +217,9 @@ const localFilters = ref({
   filterType: 'year',
   filterValue: new Date().getFullYear().toString(),
   compare: false,
-  compareWith: 'last_year', // 'last_year' or 'two_years_ago'
+  compareMode: 'last_year', // 'last_year', 'previous_month', 'custom'
+  compareFilterType: 'year', // Used when compareMode is 'custom'
+  compareFilterValue: null, // Used when compareMode is 'custom'
 })
 
 // Filter options
@@ -187,9 +228,10 @@ const filterTypeOptions = [
   { title: 'Yearly', value: 'year' },
 ]
 
-const compareWithOptions = [
-  { title: 'Last Year', value: 'last_year' },
-  { title: 'Two Years Ago', value: 'two_years_ago' },
+const compareModeOptions = [
+  { title: 'Same Period Last Year', value: 'last_year' },
+  { title: 'Previous Month', value: 'previous_month' },
+  { title: 'Custom Period', value: 'custom' },
 ]
 
 // Generate year options (last 5 years + current year)
@@ -212,7 +254,9 @@ const initializeFilters = () => {
     filterType: 'year',
     filterValue: currentYear.toString(),
     compare: false,
-    compareWith: 'last_year',
+    compareMode: 'last_year',
+    compareFilterType: 'year',
+    compareFilterValue: null,
   }
   
   // Load initial data
@@ -222,6 +266,38 @@ const initializeFilters = () => {
 // Initialize on mount
 onMounted(() => {
   initializeFilters()
+})
+
+// Helper function to format period label
+const formatPeriodLabel = (filterType, filterValue) => {
+  if (!filterValue) return 'Period'
+  
+  if (filterType === 'year') {
+    return filterValue
+  } else if (filterType === 'month') {
+    // Format: YYYY-MM to "Month YYYY"
+    const [year, month] = filterValue.split('-')
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                        'July', 'August', 'September', 'October', 'November', 'December']
+    const monthIndex = parseInt(month) - 1
+    return `${monthNames[monthIndex]} ${year}`
+  }
+  
+  return filterValue
+}
+
+// Get formatted labels for current and compare periods
+const currentPeriodLabel = computed(() => {
+  return formatPeriodLabel(localFilters.value.filterType, localFilters.value.filterValue)
+})
+
+const comparePeriodLabel = computed(() => {
+  if (!localFilters.value.compare) return ''
+  
+  const compParams = getComparisonParams()
+  if (!compParams) return 'Compare Period'
+  
+  return formatPeriodLabel(compParams.compareFilterType, compParams.compareFilterValue)
 })
 
 // Chart data
@@ -249,26 +325,50 @@ const revenueGrowth = computed(() => {
   return null
 })
 
-// Calculate comparison dates automatically based on selection
-const getComparisonDates = () => {
-  const { filterType, filterValue, compareWith } = localFilters.value
+// Calculate comparison parameters based on compareMode
+const getComparisonParams = () => {
+  const { filterType, filterValue, compareMode, compareFilterType, compareFilterValue } = localFilters.value
   
   if (!filterValue) return null
   
-  const yearsBack = compareWith === 'last_year' ? 1 : 2
+  // Custom mode: use user-provided values
+  if (compareMode === 'custom') {
+    if (!compareFilterValue) return null
+    return {
+      compareFilterType: compareFilterType,
+      compareFilterValue: compareFilterValue,
+    }
+  }
   
+  // Previous month mode
+  if (compareMode === 'previous_month') {
+    if (filterType === 'month') {
+      const [year, month] = filterValue.split('-')
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1)
+      date.setMonth(date.getMonth() - 1)
+      const prevYear = date.getFullYear()
+      const prevMonth = String(date.getMonth() + 1).padStart(2, '0')
+      return {
+        compareFilterType: 'month',
+        compareFilterValue: `${prevYear}-${prevMonth}`,
+      }
+    }
+    // For year filter, previous month doesn't make sense
+    return null
+  }
+  
+  // Last year mode (default)
   if (filterType === 'year') {
     const year = parseInt(filterValue)
-    const compareYear = year - yearsBack
     return {
-      filter_value: compareYear.toString(),
+      compareFilterType: 'year',
+      compareFilterValue: (year - 1).toString(),
     }
   } else if (filterType === 'month') {
-    // filterValue format: YYYY-MM
     const [year, month] = filterValue.split('-')
-    const compareYear = parseInt(year) - yearsBack
     return {
-      filter_value: `${compareYear}-${month}`,
+      compareFilterType: 'month',
+      compareFilterValue: `${parseInt(year) - 1}-${month}`,
     }
   }
   
@@ -289,22 +389,33 @@ const onFilterTypeChange = () => {
   onFilterChange()
 }
 
+const onCompareModeChange = () => {
+  // When compare mode changes, reset custom values if needed
+  if (localFilters.value.compareMode === 'custom') {
+    localFilters.value.compareFilterType = localFilters.value.filterType
+    localFilters.value.compareFilterValue = null
+  }
+  onFilterChange()
+}
+
 const onFilterChange = () => {
-  // Build simplified filter params
+  // Build filter params
   const params = {
     filterType: localFilters.value.filterType,
     filterValue: localFilters.value.filterValue,
     compare: localFilters.value.compare,
-    compareWith: localFilters.value.compareWith,
   }
   
-  // Add comparison dates if compare is enabled
+  // Add comparison parameters if compare is enabled
   if (params.compare) {
-    const compDates = getComparisonDates()
-    if (compDates) {
-      params.compareFilterValue = compDates.filter_value
+    const compParams = getComparisonParams()
+    if (compParams) {
+      params.compareFilterType = compParams.compareFilterType
+      params.compareFilterValue = compParams.compareFilterValue
     }
   }
+  
+  console.log('Revenue filter params:', params)
   
   // Apply filters to store and fetch data
   updateRevenueFilters(params)
@@ -312,7 +423,9 @@ const onFilterChange = () => {
 
 const onCompareToggle = () => {
   if (!localFilters.value.compare) {
-    localFilters.value.compareWith = 'last_year'
+    // Reset compare mode when disabled
+    localFilters.value.compareMode = 'last_year'
+    localFilters.value.compareFilterValue = null
   }
   onFilterChange()
 }

@@ -23,6 +23,7 @@ export function useAnalytics() {
     const managerPerformance = computed(() => dashboardStore.managerPerformance)
     const recentOrders = computed(() => dashboardStore.recentOrders)
     const revenueFilters = computed(() => dashboardStore.revenueFilters)
+    const productsFilters = computed(() => dashboardStore.productsFilters)
     // Derived convenience values (optional export for components needing direct access)
     const totalOrders = computed(() => dashboardStore.stats.totalOrders || 0)
 
@@ -48,8 +49,12 @@ export function useAnalytics() {
             parseFloat(item.revenue || 0)
         )
 
+        // Get dynamic labels from store or fallback to defaults
+        const currentLabel = dashboardStore.revenuePeriodLabel || (hasComparison ? 'Current Period' : 'Revenue')
+        const compareLabel = dashboardStore.revenueComparePeriodLabel || 'Comparison Period'
+
         const series = [{
-            name: hasComparison ? 'Current Period' : 'Revenue',
+            name: currentLabel,
             data: primaryData
         }]
 
@@ -60,7 +65,7 @@ export function useAnalytics() {
             )
 
             series.push({
-                name: 'Comparison Period',
+                name: compareLabel,
                 data: comparisonData
             })
         }
@@ -187,6 +192,20 @@ export function useAnalytics() {
         return refreshRevenueData()
     }
 
+    const refreshProductsData = async () => {
+        loading.value = true
+        try {
+            await dashboardStore.fetchTopProducts(true)
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const updateProductsFilters = (filters) => {
+        dashboardStore.setProductsFilters(filters)
+        return refreshProductsData()
+    }
+
     // Auto fetch on mount only if not initialized
     onMounted(() => {
         if (!isInitialized && !isCurrentlyFetching) {
@@ -209,6 +228,7 @@ export function useAnalytics() {
         managerPerformance,
         recentOrders,
         revenueFilters,
+        productsFilters,
 
         // Chart data
         getRevenueChartData,
@@ -221,6 +241,8 @@ export function useAnalytics() {
         fetchDashboardData,
         refreshData,
         refreshRevenueData,
-        updateRevenueFilters
+        updateRevenueFilters,
+        refreshProductsData,
+        updateProductsFilters
     }
 }
