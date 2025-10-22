@@ -1132,58 +1132,162 @@ class Sales_Dashboard_Analytics {
     }
     
     /**
-     * Get manager performance data
+     * Get manager performance data with filtering and comparison
      */
     public function get_manager_performance($request) {
         try {
-            $results = array();
+            // Get filter parameters
+            $filter_type = $request->get_param('filterType') ?: 'year';
+            $filter_value = $request->get_param('filterValue') ?: date('Y');
+            $start_date = $request->get_param('startDate');
+            $end_date = $request->get_param('endDate');
+            $compare = filter_var($request->get_param('compare'), FILTER_VALIDATE_BOOLEAN);
+            $compare_filter_type = $request->get_param('compareFilterType');
+            $compare_filter_value = $request->get_param('compareFilterValue');
+            $compare_start_date = $request->get_param('compareStartDate');
+            $compare_end_date = $request->get_param('compareEndDate');
             
-            // Date range for last month
-            $month_start = date('Y-m-01 00:00:00', strtotime('-1 month'));
-            $month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
+            // Calculate main period date range
+            $date_range = $this->calculate_simple_date_range($filter_type, $filter_value, $start_date, $end_date);
+            $period_start = $date_range['start'];
+            $period_end = $date_range['end'];
             
-            foreach ($this->managers as $manager_id => $manager_name) {
-                // Get customers for this manager (simplified - assuming user meta)
-                $customers = get_users(array(
-                    'meta_key' => '_account_manager_id',
-                    'meta_value' => $manager_id,
-                    'fields' => 'ID'
-                ));
+            // Get performance data for main period
+            $results = $this->calculate_manager_performance($period_start, $period_end);
+            
+            // If comparison is enabled, calculate comparison period
+            $comparison_data = null;
+            if ($compare && $compare_filter_type) {
+                $compare_range = $this->calculate_simple_date_range(
+                    $compare_filter_type,
+                    $compare_filter_value,
+                    $compare_start_date,
+                    $compare_end_date
+                );
                 
-                $orders_count = 0;
-                $revenue = 0;
+                $comparison_results = $this->calculate_manager_performance(
+                    $compare_range['start'],
+                    $compare_range['end']
+                );
                 
-                if (!empty($customers)) {
-                    $customer_ids = array_map('intval', $customers);
+                // Add growth calculations
+                foreach ($results as &$manager) {
+                    $compare_manager = null;
+                    foreach ($comparison_results as $cm) {
+                        if ($cm['manager_id'] === $manager['manager_id']) {
+                            $compare_manager = $cm;
+                            break;
+                        }
+                    }
                     
-                    $orders = wc_get_orders(array(
-                        'status' => array('wc-completed', 'wc-processing'),
-                        'date_created' => $month_start . '...' . $month_end,
-                        'customer' => $customer_ids,
-                        'limit' => -1,
-                        'return' => 'objects'
-                    ));
-                    
-                    $orders_count = count($orders);
-                    foreach ($orders as $order) {
-                        $revenue += $order->get_total();
+                    if ($compare_manager) {
+                        $manager['compare_orders'] = $compare_manager['orders_count'];
+                        $manager['compare_revenue'] = $compare_manager['revenue'];
+                        
+                        // Calculate growth percentages
+                        $manager['orders_growth'] = $compare_manager['orders_count'] > 0
+                            ? (($manager['orders_count'] - $compare_manager['orders_count']) / $compare_manager['orders_count']) * 100
+                            : 0;
+                        
+                        $manager['revenue_growth'] = $compare_manager['revenue'] > 0
+                            ? (($manager['revenue'] - $compare_manager['revenue']) / $compare_manager['revenue']) * 100
+                            : 0;
+                    } else {
+                        $manager['compare_orders'] = 0;
+                        $manager['compare_revenue'] = 0;
+                        $manager['orders_growth'] = 0;
+                        $manager['revenue_growth'] = 0;
                     }
                 }
                 
-                $results[] = array(
-                    'manager_id' => $manager_id,
-                    'manager_name' => $manager_name,
-                    'orders_count' => $orders_count,
-                    'revenue' => $revenue
+                $comparison_data = $comparison_results;
+            }
+            
+            // Format period labels
+            $period_label = $this->format_statistics_period_label($filter_type, $filter_value, $start_date, $end_date);
+            $compare_period_label = null;
+            
+            if ($compare && $compare_filter_type) {
+                $compare_period_label = $this->format_statistics_period_label(
+                    $compare_filter_type,
+                    $compare_filter_value,
+                    $compare_start_date,
+                    $compare_end_date
                 );
             }
             
-            return rest_ensure_response(array('data' => $results));
+            $response = array(
+                'data' => $results,
+                'period_label' => $period_label,
+                'period_start' => $period_start,
+                'period_end' => $period_end,
+                'filter_type' => $filter_type
+            );
+            
+            if ($compare) {
+                $response['comparison_data'] = $comparison_data;
+                $response['compare_period_label'] = $compare_period_label;
+                $response['compare_period_start'] = $compare_range['start'];
+                $response['compare_period_end'] = $compare_range['end'];
+            }
+            
+            return rest_ensure_response($response);
             
         } catch (Exception $e) {
             error_log('Manager Performance Error: ' . $e->getMessage());
-            return rest_ensure_response(array('data' => array()));
+            return rest_ensure_response(array(
+                'data' => array(),
+                'period_label' => '',
+                'period_start' => '',
+                'period_end' => '',
+                'filter_type' => 'year'
+            ));
         }
+    }
+    
+    /**
+     * Calculate manager performance for a given date range
+     */
+    private function calculate_manager_performance($period_start, $period_end) {
+        $results = array();
+        
+        foreach ($this->managers as $manager_id => $manager_name) {
+            // Get customers for this manager
+            $customers = get_users(array(
+                'meta_key' => '_account_manager_id',
+                'meta_value' => $manager_id,
+                'fields' => 'ID'
+            ));
+            
+            $orders_count = 0;
+            $revenue = 0;
+            
+            if (!empty($customers)) {
+                $customer_ids = array_map('intval', $customers);
+                
+                $orders = wc_get_orders(array(
+                    'status' => array('wc-completed', 'wc-processing'),
+                    'date_created' => $period_start . '...' . $period_end,
+                    'customer' => $customer_ids,
+                    'limit' => -1,
+                    'return' => 'objects'
+                ));
+                
+                $orders_count = count($orders);
+                foreach ($orders as $order) {
+                    $revenue += $order->get_total();
+                }
+            }
+            
+            $results[] = array(
+                'manager_id' => $manager_id,
+                'manager_name' => $manager_name,
+                'orders_count' => $orders_count,
+                'revenue' => $revenue
+            );
+        }
+        
+        return $results;
     }
     
     /**

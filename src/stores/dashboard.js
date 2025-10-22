@@ -28,6 +28,9 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     revenueComparisonSummary: null, // Summary for chart comparison
     managerPerformance: [],
+    managerPerformanceComparison: [], // For comparison data
+    managerPeriodLabel: '', // Current period label
+    managerComparePeriodLabel: '', // Compare period label
     loading: {
       stats: false,
       orders: false,
@@ -70,6 +73,18 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     // Order statistics filters
     orderStatisticsFilters: {
+      filterType: 'year', // 'month', 'year', 'date-range'
+      filterValue: null,
+      startDate: null,
+      endDate: null,
+      compare: false,
+      compareFilterType: null,
+      compareFilterValue: null,
+      compareStartDate: null,
+      compareEndDate: null,
+    },
+    // Manager performance filters
+    managerPerformanceFilters: {
       filterType: 'year', // 'month', 'year', 'date-range'
       filterValue: null,
       startDate: null,
@@ -319,19 +334,63 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    async fetchManagerPerformance() {
+    async fetchManagerPerformance(refresh = false) {
       this.loading.performance = true
 
       try {
-        const params = this.buildAPIParams()
         const api = this._getAPI()
+        const filters = this.managerPerformanceFilters
+
+        // Build parameters based on filters
+        const params = {
+          filterType: filters.filterType || 'year',
+          filterValue: filters.filterValue || new Date().getFullYear().toString(),
+        }
+
+        // Add date range if specified
+        if (filters.filterType === 'date-range' && filters.startDate && filters.endDate) {
+          params.startDate = filters.startDate
+          params.endDate = filters.endDate
+        }
+
+        // Add comparison parameters if enabled
+        if (filters.compare) {
+          params.compare = true
+          params.compareFilterType = filters.compareFilterType
+          params.compareFilterValue = filters.compareFilterValue
+
+          if (filters.compareFilterType === 'date-range' && filters.compareStartDate && filters.compareEndDate) {
+            params.compareStartDate = filters.compareStartDate
+            params.compareEndDate = filters.compareEndDate
+          }
+        }
+
         const response = await api.getManagerPerformance(params)
+
         this.managerPerformance = response.data || []
+        this.managerPeriodLabel = response.period_label || ''
+
+        if (filters.compare && response.comparison_data) {
+          this.managerPerformanceComparison = response.comparison_data || []
+          this.managerComparePeriodLabel = response.compare_period_label || ''
+        } else {
+          this.managerPerformanceComparison = []
+          this.managerComparePeriodLabel = ''
+        }
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch manager performance:', error)
+        this.managerPerformance = []
       } finally {
         this.loading.performance = false
+      }
+    },
+
+    // Set manager performance filters
+    setManagerPerformanceFilters(filters) {
+      this.managerPerformanceFilters = {
+        ...this.managerPerformanceFilters,
+        ...filters,
       }
     },
 

@@ -20,6 +20,157 @@
     </VCardItem>
 
     <VCardText>
+      <!-- Filters Section -->
+      <VRow class="mb-4" dense>
+        <!-- Filter Type -->
+        <VCol cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.filterType"
+            :items="filterTypeOptions"
+            label="Period"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onFilterTypeChange"
+          />
+        </VCol>
+
+        <!-- Month Selector -->
+        <VCol v-if="localFilters.filterType === 'month'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.filterValue"
+            type="month"
+            label="Select Month"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Year Selector -->
+        <VCol v-if="localFilters.filterType === 'year'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.filterValue"
+            type="number"
+            label="Select Year"
+            density="compact"
+            variant="outlined"
+            hide-details
+            :min="2020"
+            :max="new Date().getFullYear()"
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Date Range Start -->
+        <VCol v-if="localFilters.filterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.startDate"
+            type="date"
+            label="Start Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Date Range End -->
+        <VCol v-if="localFilters.filterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.endDate"
+            type="date"
+            label="End Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Checkbox -->
+        <VCol cols="12" sm="6" md="3">
+          <VCheckbox
+            v-model="localFilters.compare"
+            label="Compare with"
+            density="compact"
+            hide-details
+            @update:model-value="onCompareToggle"
+          />
+        </VCol>
+      </VRow>
+
+      <!-- Comparison Filters (shown when compare is enabled) -->
+      <VRow v-if="localFilters.compare" class="mb-4" dense>
+        <!-- Compare Filter Type -->
+        <VCol cols="12" sm="6" md="3">
+          <VSelect
+            v-model="localFilters.compareFilterType"
+            :items="compareFilterTypeOptions"
+            label="Compare Period"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @update:model-value="onCompareFilterTypeChange"
+          />
+        </VCol>
+
+        <!-- Compare Month Selector -->
+        <VCol v-if="localFilters.compareFilterType === 'month'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareFilterValue"
+            type="month"
+            label="Select Month"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Year Selector -->
+        <VCol v-if="localFilters.compareFilterType === 'year'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareFilterValue"
+            type="number"
+            label="Select Year"
+            density="compact"
+            variant="outlined"
+            hide-details
+            :min="2020"
+            :max="new Date().getFullYear()"
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Date Range Start -->
+        <VCol v-if="localFilters.compareFilterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareStartDate"
+            type="date"
+            label="Start Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+
+        <!-- Compare Date Range End -->
+        <VCol v-if="localFilters.compareFilterType === 'date-range'" cols="12" sm="6" md="3">
+          <VTextField
+            v-model="localFilters.compareEndDate"
+            type="date"
+            label="End Date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            @change="onFilterChange"
+          />
+        </VCol>
+      </VRow>
+
       <!-- Chart -->
       <div v-if="chartData.categories.length > 0">
         <VueApexCharts
@@ -49,7 +200,7 @@
         </VBtn>
       </div>
 
-      <!-- Manager Stats -->
+      <!-- Manager Stats with Growth -->
       <div v-if="managerPerformance.length > 0" class="mt-4">
         <VDivider class="mb-4" />
         <VRow>
@@ -72,6 +223,15 @@
               </div>
               <div class="text-caption text-medium-emphasis mb-2">
                 {{ manager.orders_count }} orders
+                <VChip 
+                  v-if="localFilters.compare && manager.orders_growth !== undefined"
+                  :color="getGrowthColor(manager.orders_growth)" 
+                  size="x-small" 
+                  variant="tonal"
+                  class="ml-1"
+                >
+                  {{ formatGrowth(manager.orders_growth) }}%
+                </VChip>
               </div>
               <VChip
                 :color="getManagerColor(manager.manager_id)"
@@ -79,6 +239,13 @@
                 size="small"
               >
                 ${{ formatCurrency(manager.revenue) }}
+                <VIcon 
+                  v-if="localFilters.compare && manager.revenue_growth !== undefined"
+                  :icon="manager.revenue_growth >= 0 ? 'bx-up-arrow-alt' : 'bx-down-arrow-alt'"
+                  :color="manager.revenue_growth >= 0 ? 'success' : 'error'"
+                  size="16"
+                  class="ml-1"
+                />
               </VChip>
             </div>
           </VCol>
@@ -91,17 +258,45 @@
 <script setup>
 import { useAnalytics } from '@/composables/useAnalytics'
 import { hexToRgb } from '@core/utils/colorConverter'
-import { computed } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { useTheme } from 'vuetify'
 
 const vuetifyTheme = useTheme()
-const { 
-  loading, 
+const {
+  loading,
   managerPerformance,
+  managerPerformanceFilters,
   getManagerPerformanceData,
-  refreshData 
+  updateManagerPerformanceFilters,
+  refreshManagerPerformance
 } = useAnalytics()
+
+// Local filters for UI
+const localFilters = reactive({
+  filterType: 'year',
+  filterValue: new Date().getFullYear().toString(),
+  startDate: null,
+  endDate: null,
+  compare: false,
+  compareFilterType: 'month',
+  compareFilterValue: null,
+  compareStartDate: null,
+  compareEndDate: null,
+})
+
+// Filter options
+const filterTypeOptions = [
+  { title: 'Month', value: 'month' },
+  { title: 'Year', value: 'year' },
+  { title: 'Date Range', value: 'date-range' },
+]
+
+const compareFilterTypeOptions = [
+  { title: 'Month', value: 'month' },
+  { title: 'Year', value: 'year' },
+  { title: 'Date Range', value: 'date-range' },
+]
 
 // Chart data
 const chartData = computed(() => getManagerPerformanceData.value)
@@ -111,8 +306,13 @@ const chartOptions = computed(() => {
   const currentTheme = vuetifyTheme.current.value.colors
   const variableTheme = vuetifyTheme.current.value.variables
   
-  const primaryColor = `rgba(${hexToRgb(String(currentTheme.primary))}, 1)`
-  const successColor = `rgba(${hexToRgb(String(currentTheme.success))}, 1)`
+  const colors = [
+    `rgba(${hexToRgb(String(currentTheme.primary))}, 1)`,
+    `rgba(${hexToRgb(String(currentTheme.success))}, 1)`,
+    `rgba(${hexToRgb(String(currentTheme.warning))}, 0.7)`,
+    `rgba(${hexToRgb(String(currentTheme.info))}, 0.7)`,
+  ]
+  
   const textColor = `rgba(${hexToRgb(String(currentTheme['on-surface']))}, ${variableTheme['high-emphasis-opacity']})`
   const borderColor = `rgba(${hexToRgb(String(variableTheme['border-color']))}, ${variableTheme['border-opacity']})`
   
@@ -127,7 +327,7 @@ const chartOptions = computed(() => {
         speed: 800
       }
     },
-    colors: [primaryColor, successColor],
+    colors: colors,
     dataLabels: { enabled: false },
     stroke: {
       width: 0
@@ -206,21 +406,79 @@ const chartOptions = computed(() => {
       theme: vuetifyTheme.current.value.dark ? 'dark' : 'light',
       shared: true,
       intersect: false,
-      y: [
-        {
-          formatter: (val) => `${val} orders`
-        },
-        {
-          formatter: (val) => `$${formatCurrency(val)}`
+      y: {
+        formatter: (val, opts) => {
+          // Check if it's an orders series or revenue series based on series name
+          const seriesName = opts.seriesIndex !== undefined ? chartData.value.series[opts.seriesIndex]?.name : ''
+          if (seriesName && seriesName.toLowerCase().includes('revenue')) {
+            return `$${formatCurrency(val)}`
+          }
+          return `${val} orders`
         }
-      ]
+      }
     }
   }
 })
 
+// Handlers
+function onFilterTypeChange() {
+  // Reset filter value when type changes
+  if (localFilters.filterType === 'month') {
+    const now = new Date()
+    localFilters.filterValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  } else if (localFilters.filterType === 'year') {
+    localFilters.filterValue = new Date().getFullYear().toString()
+  } else {
+    localFilters.startDate = null
+    localFilters.endDate = null
+  }
+  onFilterChange()
+}
+
+function onCompareToggle() {
+  if (localFilters.compare && !localFilters.compareFilterType) {
+    localFilters.compareFilterType = 'month'
+    onCompareFilterTypeChange()
+  } else {
+    onFilterChange()
+  }
+}
+
+function onCompareFilterTypeChange() {
+  // Set default values based on compare filter type
+  if (localFilters.compareFilterType === 'month') {
+    const lastMonth = new Date()
+    lastMonth.setMonth(lastMonth.getMonth() - 1)
+    localFilters.compareFilterValue = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`
+  } else if (localFilters.compareFilterType === 'year') {
+    localFilters.compareFilterValue = (new Date().getFullYear() - 1).toString()
+  } else {
+    localFilters.compareStartDate = null
+    localFilters.compareEndDate = null
+  }
+  onFilterChange()
+}
+
+function onFilterChange() {
+  updateManagerPerformanceFilters(localFilters)
+}
+
+function refreshData() {
+  refreshManagerPerformance()
+}
+
 // Helper methods
 const formatCurrency = (value) => {
   return parseFloat(value || 0).toLocaleString('en-US')
+}
+
+const formatGrowth = (value) => {
+  const num = parseFloat(value || 0)
+  return num >= 0 ? `+${num.toFixed(1)}` : num.toFixed(1)
+}
+
+const getGrowthColor = (growth) => {
+  return parseFloat(growth) >= 0 ? 'success' : 'error'
 }
 
 const getManagerColor = (managerId) => {
@@ -228,6 +486,20 @@ const getManagerColor = (managerId) => {
   const index = parseInt(managerId) || 0
   return colors[index % colors.length]
 }
+
+// Initialize on mount
+onMounted(() => {
+  // Set initial filter value based on type
+  if (localFilters.filterType === 'year') {
+    localFilters.filterValue = new Date().getFullYear().toString()
+  } else if (localFilters.filterType === 'month') {
+    const now = new Date()
+    localFilters.filterValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }
+  
+  // Apply initial filters
+  updateManagerPerformanceFilters(localFilters)
+})
 </script>
 
 <style lang="scss" scoped>

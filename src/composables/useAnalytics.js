@@ -21,9 +21,13 @@ export function useAnalytics() {
     const topProducts = computed(() => dashboardStore.topProducts)
     const salesComparison = computed(() => dashboardStore.salesComparison)
     const managerPerformance = computed(() => dashboardStore.managerPerformance)
+    const managerPerformanceComparison = computed(() => dashboardStore.managerPerformanceComparison)
+    const managerPeriodLabel = computed(() => dashboardStore.managerPeriodLabel)
+    const managerComparePeriodLabel = computed(() => dashboardStore.managerComparePeriodLabel)
     const recentOrders = computed(() => dashboardStore.recentOrders)
     const revenueFilters = computed(() => dashboardStore.revenueFilters)
     const productsFilters = computed(() => dashboardStore.productsFilters)
+    const managerPerformanceFilters = computed(() => dashboardStore.managerPerformanceFilters)
     // Derived convenience values (optional export for components needing direct access)
     const totalOrders = computed(() => dashboardStore.stats.totalOrders || 0)
 
@@ -108,6 +112,8 @@ export function useAnalytics() {
     })
 
     const getManagerPerformanceData = computed(() => {
+        const hasComparison = managerPerformanceComparison.value && managerPerformanceComparison.value.length > 0
+
         if (!managerPerformance.value || managerPerformance.value.length === 0) {
             return {
                 categories: [],
@@ -124,6 +130,8 @@ export function useAnalytics() {
         const categories = managerPerformance.value.map(manager =>
             manager.manager_name
         )
+
+        // Primary series - current period
         const ordersData = managerPerformance.value.map(manager =>
             parseInt(manager.orders_count || 0)
         )
@@ -131,15 +139,43 @@ export function useAnalytics() {
             parseFloat(manager.revenue || 0)
         )
 
+        // Get dynamic labels from store or fallback to defaults
+        const currentLabel = managerPeriodLabel.value || (hasComparison ? 'Current Period' : '')
+        const compareLabel = managerComparePeriodLabel.value || 'Comparison Period'
+
+        const series = [
+            {
+                name: hasComparison ? `Orders (${currentLabel})` : 'Orders Count',
+                data: ordersData
+            },
+            {
+                name: hasComparison ? `Revenue (${currentLabel})` : 'Revenue',
+                data: revenueData
+            }
+        ]
+
+        // Add comparison series if available
+        if (hasComparison) {
+            const compareOrdersData = managerPerformance.value.map(manager =>
+                parseInt(manager.compare_orders || 0)
+            )
+            const compareRevenueData = managerPerformance.value.map(manager =>
+                parseFloat(manager.compare_revenue || 0)
+            )
+
+            series.push({
+                name: `Orders (${compareLabel})`,
+                data: compareOrdersData
+            })
+            series.push({
+                name: `Revenue (${compareLabel})`,
+                data: compareRevenueData
+            })
+        }
+
         return {
             categories,
-            series: [{
-                name: 'Orders Count',
-                data: ordersData
-            }, {
-                name: 'Revenue',
-                data: revenueData
-            }]
+            series
         }
     })
 
@@ -206,6 +242,20 @@ export function useAnalytics() {
         return refreshProductsData()
     }
 
+    const refreshManagerPerformance = async () => {
+        loading.value = true
+        try {
+            await dashboardStore.fetchManagerPerformance(true)
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const updateManagerPerformanceFilters = (filters) => {
+        dashboardStore.setManagerPerformanceFilters(filters)
+        return refreshManagerPerformance()
+    }
+
     // Auto fetch on mount only if not initialized
     onMounted(() => {
         if (!isInitialized && !isCurrentlyFetching) {
@@ -226,9 +276,13 @@ export function useAnalytics() {
         topProducts,
         salesComparison,
         managerPerformance,
+        managerPerformanceComparison,
+        managerPeriodLabel,
+        managerComparePeriodLabel,
         recentOrders,
         revenueFilters,
         productsFilters,
+        managerPerformanceFilters,
 
         // Chart data
         getRevenueChartData,
@@ -243,6 +297,8 @@ export function useAnalytics() {
         refreshRevenueData,
         updateRevenueFilters,
         refreshProductsData,
-        updateProductsFilters
+        updateProductsFilters,
+        refreshManagerPerformance,
+        updateManagerPerformanceFilters
     }
 }
