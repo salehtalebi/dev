@@ -82,84 +82,12 @@
             </VCardText>
           </VCard>
 
-          <!-- Customer Stats -->
-          <VCard v-if="customerStats">
-            <VCardTitle>Customer Statistics</VCardTitle>
-            <VCardText>
-              <!-- Basic Stats -->
-              <div class="mb-6">
-                <h3 class="text-h6 mb-4">General Statistics</h3>
-                
-                <VRow>
-                  <VCol cols="12" md="6">
-                    <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">Total Orders:</span>
-                      <VChip color="primary" variant="tonal">{{ customerStats?.total_orders || 0 }}</VChip>
-                    </div>
-                    
-                    <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">Total Spent:</span>
-                      <span class="font-weight-bold text-success">${{ formatCurrency(customerStats?.total_spent || 0) }}</span>
-                    </div>
-                    
-                    <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">Average Order Value:</span>
-                      <span class="font-weight-bold">${{ formatCurrency(customerStats?.average_order_value || 0) }}</span>
-                    </div>
-                  </VCol>
-                  
-                  <VCol cols="12" md="6">
-                    <div class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">Growth vs Last Month:</span>
-                      <VChip
-                        :color="(customerStats?.growth_percentage || 0) >= 0 ? 'success' : 'error'"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ (customerStats?.growth_percentage || 0) >= 0 ? '+' : '' }}{{ (customerStats?.growth_percentage || 0).toFixed(1) }}%
-                      </VChip>
-                    </div>
-                    
-                    <div v-if="customerStats?.last_order_date" class="d-flex justify-space-between align-center mb-3">
-                      <span class="text-body-2">Last Order:</span>
-                      <span class="text-caption">{{ formatDate(customerStats.last_order_date) }}</span>
-                    </div>
-                  </VCol>
-                </VRow>
-              </div>
-              
-              <!-- Monthly Stats Chart -->
-              <div v-if="customerStats?.monthly_orders?.length" class="mb-6">
-                <h3 class="text-h6 mb-4">Monthly Statistics (Last 12 Months)</h3>
-                <VRow>
-                  <VCol cols="12">
-                    <div class="pa-4 bg-grey-lighten-4 rounded">
-                      <VTable density="compact">
-                        <thead>
-                          <tr>
-                            <th>Month</th>
-                            <th>Orders Count</th>
-                            <th>Amount Spent</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr v-for="monthData in customerStats.monthly_orders" :key="monthData.month">
-                            <td>{{ formatMonth(monthData.month) }}</td>
-                            <td>
-                              <VChip size="small" color="info" variant="tonal">
-                                {{ monthData.orders_count }}
-                              </VChip>
-                            </td>
-                            <td class="font-weight-medium">${{ formatCurrency(monthData.total_spent) }}</td>
-                          </tr>
-                        </tbody>
-                      </VTable>
-                    </div>
-                  </VCol>
-                </VRow>
-              </div>
-            </VCardText>
-          </VCard>
+          <!-- Customer Statistics with Filters -->
+          <CustomerStatisticsCard
+            v-if="customerId"
+            :customer-id="customerId"
+            class="mb-6"
+          />
         </VCol>
 
         <!-- Customer Details & Recent Orders -->
@@ -195,6 +123,13 @@
               </div>
             </VCardText>
           </VCard>
+
+          <!-- Customer Categories Chart -->
+          <CustomerCategoriesChart
+            v-if="customerId"
+            :customer-id="customerId"
+            class="mb-6"
+          />
 
               <!-- Customer Orders with Pagination -->
               <VCard>
@@ -271,6 +206,8 @@
 </template>
 
 <script setup>
+import CustomerCategoriesChart from '@/components/CustomerCategoriesChart.vue'
+import CustomerStatisticsCard from '@/components/CustomerStatisticsCard.vue'
 import { useCustomersStore } from '@/stores/customers'
 import { format } from 'date-fns'
 import { computed, onMounted, ref } from 'vue'
@@ -301,7 +238,6 @@ const itemsPerPageOptions = [
 // Computed
 const customer = computed(() => customersStore.currentCustomer)
 const customerOrders = computed(() => Array.isArray(customersStore.customerOrders) ? customersStore.customerOrders : [])
-const customerStats = computed(() => customersStore.customerStats)
 const isLoading = computed(() => customersStore.isLoading)
 
 // Table headers
@@ -315,10 +251,7 @@ const orderHeaders = [
 // Methods
 const fetchCustomer = async () => {
   try {
-    await Promise.all([
-      customersStore.fetchCustomer(customerId),
-      customersStore.fetchCustomerStatistics(customerId)
-    ])
+    await customersStore.fetchCustomer(customerId)
     await loadCustomerOrders()
   } catch (error) {
     console.error('Error fetching customer:', error)

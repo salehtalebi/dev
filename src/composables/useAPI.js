@@ -96,6 +96,16 @@ export function useAPI() {
     return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/customers/${customerId}/statistics`.replace(API_CONFIG.BASE_URL, ''))
   }
 
+  const getCustomerStatisticsWithFilter = async (customerId, params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/customer-statistics/${customerId}${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
+  const getCustomerCategories = async (customerId, params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return await makeRequest(`${API_CONFIG.CUSTOM_API_URL}/analytics/customer-categories/${customerId}${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+  }
+
   // Analytics API
   const getAnalytics = async (params = {}) => {
     const query = new URLSearchParams(params).toString()
@@ -159,6 +169,8 @@ export function useAPI() {
     getCustomers,
     getCustomer,
     getCustomerStatistics,
+    getCustomerStatisticsWithFilter,
+    getCustomerCategories,
 
     // Analytics
     getAnalytics,

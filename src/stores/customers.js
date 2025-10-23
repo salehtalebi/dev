@@ -13,11 +13,26 @@ export const useCustomersStore = defineStore('customers', {
       pages: 1,
     },
     customerStats: null,
+    customerStatsFiltered: null, // Statistics with filters applied
+    customerCategories: null, // Top/Bottom categories
+    customerStatsFilters: {
+      filterType: 'year',
+      filterValue: null,
+      startDate: null,
+      endDate: null,
+      compare: false,
+      compareFilterType: null,
+      compareFilterValue: null,
+      compareStartDate: null,
+      compareEndDate: null,
+    },
     totalCustomers: 0,
     loading: {
       list: false,
       detail: false,
       update: false,
+      stats: false,
+      categories: false,
     },
     error: null,
     pagination: {
@@ -68,8 +83,22 @@ export const useCustomersStore = defineStore('customers', {
   actions: {
     // Initialize API instance
     _getAPI() {
-      const { getCustomers, getCustomer, getCustomerStatistics, getOrders } = useAPI()
-      return { getCustomers, getCustomer, getCustomerStatistics, getOrders }
+      const {
+        getCustomers,
+        getCustomer,
+        getCustomerStatistics,
+        getCustomerStatisticsWithFilter,
+        getCustomerCategories,
+        getOrders
+      } = useAPI()
+      return {
+        getCustomers,
+        getCustomer,
+        getCustomerStatistics,
+        getCustomerStatisticsWithFilter,
+        getCustomerCategories,
+        getOrders
+      }
     },
 
     async fetchCustomers(page = 1, refresh = false) {
@@ -368,6 +397,107 @@ export const useCustomersStore = defineStore('customers', {
 
     clearError() {
       this.error = null
+    },
+
+    // Customer Analytics with Filters
+    async fetchCustomerStatisticsFiltered(customerId, refresh = false) {
+      if (this.loading.stats && !refresh) return
+
+      this.loading.stats = true
+      this.error = null
+
+      try {
+        const api = this._getAPI()
+        const filters = this.customerStatsFilters
+
+        // Build parameters
+        const params = {
+          filterType: filters.filterType || 'year',
+          filterValue: filters.filterValue || new Date().getFullYear().toString(),
+        }
+
+        if (filters.filterType === 'date-range' && filters.startDate && filters.endDate) {
+          params.startDate = filters.startDate
+          params.endDate = filters.endDate
+        }
+
+        if (filters.compare) {
+          params.compare = true
+          params.compareFilterType = filters.compareFilterType
+          params.compareFilterValue = filters.compareFilterValue
+
+          if (filters.compareFilterType === 'date-range' && filters.compareStartDate && filters.compareEndDate) {
+            params.compareStartDate = filters.compareStartDate
+            params.compareEndDate = filters.compareEndDate
+          }
+        }
+
+        const stats = await api.getCustomerStatisticsWithFilter(customerId, params)
+        this.customerStatsFiltered = stats
+
+        return stats
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch customer statistics:', error)
+        this.customerStatsFiltered = null
+        throw error
+      } finally {
+        this.loading.stats = false
+      }
+    },
+
+    async fetchCustomerCategories(customerId, refresh = false) {
+      if (this.loading.categories && !refresh) return
+
+      this.loading.categories = true
+      this.error = null
+
+      try {
+        const api = this._getAPI()
+        const filters = this.customerStatsFilters
+
+        // Build parameters
+        const params = {
+          filterType: filters.filterType || 'year',
+          filterValue: filters.filterValue || new Date().getFullYear().toString(),
+          limit: 10,
+        }
+
+        if (filters.filterType === 'date-range' && filters.startDate && filters.endDate) {
+          params.startDate = filters.startDate
+          params.endDate = filters.endDate
+        }
+
+        if (filters.compare) {
+          params.compare = true
+          params.compareFilterType = filters.compareFilterType
+          params.compareFilterValue = filters.compareFilterValue
+
+          if (filters.compareFilterType === 'date-range' && filters.compareStartDate && filters.compareEndDate) {
+            params.compareStartDate = filters.compareStartDate
+            params.compareEndDate = filters.compareEndDate
+          }
+        }
+
+        const categories = await api.getCustomerCategories(customerId, params)
+        this.customerCategories = categories
+
+        return categories
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch customer categories:', error)
+        this.customerCategories = null
+        throw error
+      } finally {
+        this.loading.categories = false
+      }
+    },
+
+    setCustomerStatsFilters(filters) {
+      this.customerStatsFilters = {
+        ...this.customerStatsFilters,
+        ...filters,
+      }
     },
   },
 })
