@@ -411,7 +411,7 @@ class Sales_Dashboard_API_Routes {
             
         } catch (Exception $e) {
             error_log('Customer Statistics Error: ' . $e->getMessage());
-            return new WP_Error('server_error', 'خطا در دریافت آمار مشتری', array('status' => 500));
+            return new WP_Error('server_error', 'Error retrieving customer statistics', array('status' => 500));
         }
     }
     
@@ -841,7 +841,7 @@ class Sales_Dashboard_API_Routes {
         $order = wc_get_order($order_id);
         
         if (!$order) {
-            return new WP_Error('order_not_found', 'سفارش یافت نشد', array('status' => 404));
+            return new WP_Error('order_not_found', 'Order not found', array('status' => 404));
         }
         
         $order_data = $this->format_order_data($order);
@@ -898,14 +898,14 @@ class Sales_Dashboard_API_Routes {
         // Validate status
         $valid_statuses = array_keys(wc_get_order_statuses());
         if (!in_array('wc-' . $new_status, $valid_statuses) && !in_array($new_status, $valid_statuses)) {
-            return new WP_Error('invalid_status', 'وضعیت نامعتبر است', array('status' => 400));
+            return new WP_Error('invalid_status', 'Invalid status', array('status' => 400));
         }
         
-        $order->update_status($new_status, 'وضعیت توسط پنل فروش تغییر یافت');
+    $order->update_status($new_status, 'Status changed by Sales Dashboard');
         
         return array(
             'success' => true,
-            'message' => 'وضعیت سفارش با موفقیت بروزرسانی شد',
+            'message' => 'Order status updated successfully',
             'order' => $this->format_order_data($order)
         );
     }

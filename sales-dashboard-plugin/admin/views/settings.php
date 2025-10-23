@@ -15,7 +15,7 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['settings_nonce'], 'sales_
     update_option('sales_dashboard_token_expiry', max(1, min(30, $token_expiry)));
     update_option('sales_dashboard_rate_limit', max(10, min(1000, $rate_limit)));
     
-    echo '<div class="notice notice-success"><p>' . __('تنظیمات با موفقیت ذخیره شد!', 'sales-dashboard') . '</p></div>';
+    echo '<div class="notice notice-success"><p>' . __('Settings saved successfully!', 'sales-dashboard') . '</p></div>';
 }
 
 $jwt_secret = get_option('sales_dashboard_jwt_secret', '');
@@ -25,13 +25,13 @@ $rate_limit = get_option('sales_dashboard_rate_limit', 100);
 ?>
 
 <div class="wrap">
-    <h1><?php _e('Sales Dashboard - تنظیمات', 'sales-dashboard'); ?></h1>
+    <h1><?php _e('Sales Dashboard - Settings', 'sales-dashboard'); ?></h1>
     
     <form method="post" action="">
         <?php wp_nonce_field('sales_dashboard_settings', 'settings_nonce'); ?>
         
         <div class="postbox">
-            <h2 class="hndle"><?php _e('تنظیمات JWT', 'sales-dashboard'); ?></h2>
+            <h2 class="hndle"><?php _e('JWT Settings', 'sales-dashboard'); ?></h2>
             <div class="inside">
                 <table class="form-table">
                     <tr>
@@ -41,10 +41,10 @@ $rate_limit = get_option('sales_dashboard_rate_limit', 100);
                         <td>
                             <textarea name="jwt_secret" id="jwt_secret" rows="3" cols="60" class="large-text"><?php echo esc_textarea($jwt_secret); ?></textarea>
                             <p class="description">
-                                <?php _e('کلید مخفی برای امضای JWT tokens. این کلید را امن نگه دارید!', 'sales-dashboard'); ?>
+                                <?php _e('Secret key for signing JWT tokens. Keep this key secure!', 'sales-dashboard'); ?>
                                 <br>
                                 <button type="button" class="button button-secondary" onclick="generateJWTSecret()">
-                                    <?php _e('تولید کلید جدید', 'sales-dashboard'); ?>
+                                    <?php _e('Generate new key', 'sales-dashboard'); ?>
                                 </button>
                             </p>
                         </td>
@@ -57,31 +57,31 @@ $rate_limit = get_option('sales_dashboard_rate_limit', 100);
                         <td>
                             <textarea name="cors_origins" id="cors_origins" rows="5" cols="60" class="large-text"><?php echo esc_textarea($cors_origins); ?></textarea>
                             <p class="description">
-                                <?php _e('آدرس‌های مجاز برای CORS، هر کدام در یک خط. دامنه فرانت‌اند خود را اضافه کنید.', 'sales-dashboard'); ?>
+                                <?php _e('Allowed CORS origins, one per line. Add your frontend domain.', 'sales-dashboard'); ?>
                             </p>
                         </td>
                     </tr>
                     
                     <tr>
                         <th scope="row">
-                            <label for="token_expiry"><?php _e('مدت اعتبار Token (روز)', 'sales-dashboard'); ?></label>
+                            <label for="token_expiry"><?php _e('Token validity (days)', 'sales-dashboard'); ?></label>
                         </th>
                         <td>
                             <input type="number" name="token_expiry" id="token_expiry" value="<?php echo esc_attr($token_expiry); ?>" min="1" max="30" class="small-text">
                             <p class="description">
-                                <?php _e('تعداد روزهای اعتبار JWT tokens.', 'sales-dashboard'); ?>
+                                <?php _e('Number of days the JWT tokens remain valid.', 'sales-dashboard'); ?>
                             </p>
                         </td>
                     </tr>
                     
                     <tr>
                         <th scope="row">
-                            <label for="rate_limit"><?php _e('محدودیت درخواست (درخواست/ساعت)', 'sales-dashboard'); ?></label>
+                            <label for="rate_limit"><?php _e('Rate limit (requests/hour)', 'sales-dashboard'); ?></label>
                         </th>
                         <td>
                             <input type="number" name="rate_limit" id="rate_limit" value="<?php echo esc_attr($rate_limit); ?>" min="10" max="1000" class="small-text">
                             <p class="description">
-                                <?php _e('حداکثر تعداد درخواست API در هر ساعت برای هر کاربر.', 'sales-dashboard'); ?>
+                                <?php _e('Maximum number of API requests per hour per user.', 'sales-dashboard'); ?>
                             </p>
                         </td>
                     </tr>
@@ -90,29 +90,29 @@ $rate_limit = get_option('sales_dashboard_rate_limit', 100);
         </div>
         
         <div class="postbox">
-            <h2 class="hndle"><?php _e('تست API', 'sales-dashboard'); ?></h2>
+            <h2 class="hndle"><?php _e('API Tests', 'sales-dashboard'); ?></h2>
             <div class="inside">
-                <h3><?php _e('تست احراز هویت', 'sales-dashboard'); ?></h3>
+                <h3><?php _e('Authentication Test', 'sales-dashboard'); ?></h3>
                 <table class="form-table">
                     <tr>
-                        <th><label for="test-username"><?php _e('نام کاربری', 'sales-dashboard'); ?></label></th>
+                        <th><label for="test-username"><?php _e('Username', 'sales-dashboard'); ?></label></th>
                         <td><input type="text" id="test-username" class="regular-text" placeholder="admin"></td>
                     </tr>
                     <tr>
-                        <th><label for="test-password"><?php _e('رمز عبور', 'sales-dashboard'); ?></label></th>
+                        <th><label for="test-password"><?php _e('Password', 'sales-dashboard'); ?></label></th>
                         <td><input type="password" id="test-password" class="regular-text"></td>
                     </tr>
                 </table>
                 
                 <button type="button" class="button button-primary" onclick="testLogin()">
-                    <?php _e('تست ورود و تولید Token', 'sales-dashboard'); ?>
+                    <?php _e('Test login and generate token', 'sales-dashboard'); ?>
                 </button>
                 
                 <div id="login-test-result" style="margin-top: 20px;"></div>
                 
-                <h3><?php _e('تست API Endpoint', 'sales-dashboard'); ?></h3>
+                <h3><?php _e('Test API Endpoint', 'sales-dashboard'); ?></h3>
                 <button type="button" class="button" onclick="testAPIConnection()">
-                    <?php _e('تست اتصال API', 'sales-dashboard'); ?>
+                    <?php _e('Test API connectivity', 'sales-dashboard'); ?>
                 </button>
                 <div id="api-test-result" style="margin-top: 10px;"></div>
             </div>
@@ -124,7 +124,7 @@ $rate_limit = get_option('sales_dashboard_rate_limit', 100);
 
 <script>
 function generateJWTSecret() {
-    if (confirm('<?php _e('آیا می‌خواهید کلید JWT جدید تولید کنید؟ این کار تمام توکن‌های فعلی را نامعتبر می‌کند.', 'sales-dashboard'); ?>')) {
+    if (confirm('<?php _e('Generate a new JWT secret? This will invalidate all existing tokens.', 'sales-dashboard'); ?>')) {
         // Generate a strong random secret (64 characters)
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
         let secret = '';
@@ -141,11 +141,11 @@ function testLogin() {
     const resultDiv = document.getElementById('login-test-result');
     
     if (!username || !password) {
-        resultDiv.innerHTML = '<div class="notice notice-error"><p>لطفا نام کاربری و رمز عبور را وارد کنید.</p></div>';
+        resultDiv.innerHTML = '<div class="notice notice-error"><p>Please enter username and password.</p></div>';
         return;
     }
     
-    resultDiv.innerHTML = '<span class="spinner is-active" style="float: none;"></span> در حال تست...';
+    resultDiv.innerHTML = '<span class="spinner is-active" style="float: none;"></span> Testing...';
     
     fetch('<?php echo esc_url(rest_url('sales-dashboard/v1/auth/login')); ?>', {
         method: 'POST',
@@ -162,9 +162,9 @@ function testLogin() {
         if (data.token) {
             resultDiv.innerHTML = `
                 <div class="notice notice-success">
-                    <p><strong>✅ ورود موفقیت‌آمیز!</strong></p>
-                    <p><strong>کاربر:</strong> ${data.user.display_name} (${data.user.email})</p>
-                    <p><strong>نقش:</strong> ${data.user.roles.join(', ')}</p>
+                    <p><strong>✅ Login successful!</strong></p>
+                    <p><strong>User:</strong> ${data.user.display_name} (${data.user.email})</p>
+                    <p><strong>Roles:</strong> ${data.user.roles.join(', ')}</p>
                     <p><strong>Token:</strong></p>
                     <textarea rows="3" cols="80" readonly>${data.token}</textarea>
                 </div>
@@ -172,7 +172,7 @@ function testLogin() {
         } else {
             resultDiv.innerHTML = `
                 <div class="notice notice-error">
-                    <p><strong>❌ خطا در ورود:</strong> ${data.message || 'نام کاربری یا رمز عبور اشتباه است'}</p>
+                    <p><strong>❌ Login error:</strong> ${data.message || 'Incorrect username or password'}</p>
                 </div>
             `;
         }
@@ -180,7 +180,7 @@ function testLogin() {
     .catch(error => {
         resultDiv.innerHTML = `
             <div class="notice notice-error">
-                <p><strong>❌ خطا در اتصال:</strong> ${error.message}</p>
+                <p><strong>❌ Connection error:</strong> ${error.message}</p>
             </div>
         `;
     });
@@ -188,7 +188,7 @@ function testLogin() {
 
 function testAPIConnection() {
     const resultDiv = document.getElementById('api-test-result');
-    resultDiv.innerHTML = '<span class="spinner is-active" style="float: none;"></span> در حال تست...';
+    resultDiv.innerHTML = '<span class="spinner is-active" style="float: none;"></span> Testing...';
     
     fetch('<?php echo esc_url(rest_url('sales-dashboard/v1/auth/login')); ?>', {
         method: 'POST',
@@ -202,15 +202,15 @@ function testAPIConnection() {
     })
     .then(response => {
         if (response.status === 401) {
-            resultDiv.innerHTML = '<div class="notice notice-success"><p>✅ API در دسترس است (خطای احراز هویت انتظار می‌رود)</p></div>';
+            resultDiv.innerHTML = '<div class="notice notice-success"><p>✅ API is reachable (authentication error expected)</p></div>';
         } else if (response.status === 200) {
-            resultDiv.innerHTML = '<div class="notice notice-success"><p>✅ API کاملاً فعال است</p></div>';
+            resultDiv.innerHTML = '<div class="notice notice-success"><p>✅ API is fully operational</p></div>';
         } else {
-            resultDiv.innerHTML = '<div class="notice notice-warning"><p>⚠️ API پاسخ غیرمنتظره داد</p></div>';
+            resultDiv.innerHTML = '<div class="notice notice-warning"><p>⚠️ API returned an unexpected response</p></div>';
         }
     })
     .catch(error => {
-        resultDiv.innerHTML = '<div class="notice notice-error"><p>❌ خطا در اتصال به API</p></div>';
+        resultDiv.innerHTML = '<div class="notice notice-error"><p>❌ Error connecting to API</p></div>';
     });
 }
 </script>

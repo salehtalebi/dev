@@ -1,9 +1,6 @@
 <script setup>
 import { useAuthStore } from '@/stores/auth'
-import AuthProvider from '@/views/pages/authentication/AuthProvider.vue'
 import logo from '@images/logo.svg?raw'
-import authV1BottomShape from '@images/svg/auth-v1-bottom-shape.svg?url'
-import authV1TopShape from '@images/svg/auth-v1-top-shape.svg?url'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -74,17 +71,9 @@ const handleLogin = async () => {
 <template>
   <div class="auth-wrapper d-flex align-center justify-center pa-4">
     <div class="position-relative my-sm-16">
-      <!-- 👉 Top shape -->
-      <VImg
-        :src="authV1TopShape"
-        class="text-primary auth-v1-top-shape d-none d-sm-block"
-      />
+     
 
-      <!-- 👉 Bottom shape -->
-      <VImg
-        :src="authV1BottomShape"
-        class="text-primary auth-v1-bottom-shape d-none d-sm-block"
-      />
+  
 
       <!-- 👉 Auth Card -->
       <VCard
@@ -101,19 +90,18 @@ const handleLogin = async () => {
             <div
               class="d-flex"
               v-html="logo"
-            />
-            <h1 class="app-logo-title">
-              sneat
-            </h1>
+            
+            ></div>
+            
           </RouterLink>
         </VCardItem>
 
         <VCardText>
           <h4 class="text-h4 mb-1">
-            Welcome to Sneat! 👋🏻
+            Sales Dashboard Login
           </h4>
           <p class="mb-0">
-            Please sign-in to your account and start the adventure
+            Please enter your credentials to access the admin panel.
           </p>
         </VCardText>
 
@@ -166,12 +154,7 @@ const handleLogin = async () => {
                     :disabled="isLoading"
                   />
 
-                  <a
-                    class="text-primary"
-                    href="javascript:void(0)"
-                  >
-                    Forgot Password?
-                  </a>
+                  
                 </div>
 
                 <!-- login button -->
@@ -185,38 +168,11 @@ const handleLogin = async () => {
                 </VBtn>
               </VCol>
 
-              <!-- create account -->
-              <VCol
-                cols="12"
-                class="text-body-1 text-center"
-              >
-                <span class="d-inline-block">
-                  New on our platform?
-                </span>
-                <RouterLink
-                  class="text-primary ms-1 d-inline-block text-body-1"
-                  to="/register"
-                >
-                  Create an account
-                </RouterLink>
-              </VCol>
+              
 
-              <VCol
-                cols="12"
-                class="d-flex align-center"
-              >
-                <VDivider />
-                <span class="mx-4 text-high-emphasis">or</span>
-                <VDivider />
-              </VCol>
+              
 
-              <!-- auth providers -->
-              <VCol
-                cols="12"
-                class="text-center"
-              >
-                <AuthProvider />
-              </VCol>
+             
             </VRow>
           </VForm>
         </VCardText>

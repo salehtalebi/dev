@@ -76,7 +76,7 @@ function validate_user_role_for_jwt($data, $user) {
     if (!$has_permission) {
         return new WP_Error(
             'jwt_auth_invalid_role',
-            'شما مجوز دسترسی به این پنل را ندارید',
+            'You do not have permission to access this dashboard',
             array('status' => 403)
         );
     }

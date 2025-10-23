@@ -124,9 +124,9 @@ class SalesDashboardPlugin {
      * Create custom database tables
      */
     private function create_tables() {
-        // در فاز اول نیازی به جدول سفارشی نیست
-        // چون Account Manager ها در user meta ذخیره می‌شوند
-        // این فانکشن برای سازگاری باقی می‌ماند
+    // No custom tables are needed in the first phase
+    // because Account Managers are stored in user meta
+    // This function remains for compatibility
         
         // Ensure user meta table exists (it should by default)
         global $wpdb;

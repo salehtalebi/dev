@@ -155,7 +155,7 @@ class Sales_Dashboard_Analytics {
             
         } catch (Exception $e) {
             error_log('Sales Dashboard Analytics Error: ' . $e->getMessage());
-            return new WP_Error('analytics_error', 'خطا در دریافت آمار داشبورد: ' . $e->getMessage(), array('status' => 500));
+            return new WP_Error('analytics_error', 'Error retrieving dashboard analytics: ' . $e->getMessage(), array('status' => 500));
         }
     }
     

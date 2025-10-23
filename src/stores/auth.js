@@ -111,11 +111,25 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout() {
+      // Best effort server-side logout (blacklist token)
+      try {
+        if (this.token) {
+          await fetch(`${API_CONFIG.JWT_URL}/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.token}`,
+            },
+          })
+        }
+      } catch (e) {
+        // ignore network errors on logout
+      }
+
       this.user = null
       this.token = null
       this.isAuthenticated = false
       this.error = null
-
       localStorage.removeItem('auth_token')
     },
 

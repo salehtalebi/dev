@@ -9,6 +9,10 @@ class Sales_Dashboard_JWT_Auth {
     
     public function __construct() {
         $this->jwt_secret = get_option('sales_dashboard_jwt_secret');
+        if (empty($this->jwt_secret) && defined('JWT_AUTH_SECRET_KEY')) {
+            // Fallback to global JWT secret if plugin option is not set
+            $this->jwt_secret = JWT_AUTH_SECRET_KEY;
+        }
         $this->init_hooks();
     }
     
@@ -56,6 +60,13 @@ class Sales_Dashboard_JWT_Auth {
             'callback' => array($this, 'get_current_user'),
             'permission_callback' => array($this, 'check_jwt_auth')
         ));
+
+        // Stateless logout: blacklist current token until it expires
+        register_rest_route('sales-dashboard/v1', '/auth/logout', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'logout'),
+            'permission_callback' => '__return_true',
+        ));
     }
     
     /**
@@ -71,7 +82,7 @@ class Sales_Dashboard_JWT_Auth {
         if (is_wp_error($user)) {
             return new WP_Error(
                 'login_failed',
-                __('نام کاربری یا رمز عبور نادرست است.', 'sales-dashboard'),
+                __('Incorrect username or password.', 'sales-dashboard'),
                 array('status' => 401)
             );
         }
@@ -80,7 +91,7 @@ class Sales_Dashboard_JWT_Auth {
         if (!$this->user_can_access_dashboard($user)) {
             return new WP_Error(
                 'insufficient_permissions',
-                __('شما مجوز دسترسی به پنل فروش را ندارید.', 'sales-dashboard'),
+                __('You do not have permission to access the Sales Dashboard.', 'sales-dashboard'),
                 array('status' => 403)
             );
         }
@@ -91,7 +102,7 @@ class Sales_Dashboard_JWT_Auth {
         if (!$token) {
             return new WP_Error(
                 'token_generation_failed',
-                __('خطا در ایجاد توکن احراز هویت.', 'sales-dashboard'),
+                __('Error generating authentication token.', 'sales-dashboard'),
                 array('status' => 500)
             );
         }
@@ -115,7 +126,7 @@ class Sales_Dashboard_JWT_Auth {
         if (!$user_id) {
             return new WP_Error(
                 'invalid_token',
-                __('توکن نامعتبر یا منقضی شده است.', 'sales-dashboard'),
+                __('Token is invalid or expired.', 'sales-dashboard'),
                 array('status' => 401)
             );
         }
@@ -125,7 +136,7 @@ class Sales_Dashboard_JWT_Auth {
             'data' => array(
                 'status' => 200,
                 'user_id' => $user_id,
-                'message' => __('توکن معتبر است.', 'sales-dashboard')
+                'message' => __('Token is valid.', 'sales-dashboard')
             )
         );
     }
@@ -139,7 +150,7 @@ class Sales_Dashboard_JWT_Auth {
         if (!$user_id) {
             return new WP_Error(
                 'invalid_token',
-                __('توکن نامعتبر یا منقضی شده است.', 'sales-dashboard'),
+                __('Token is invalid or expired.', 'sales-dashboard'),
                 array('status' => 401)
             );
         }
@@ -162,7 +173,7 @@ class Sales_Dashboard_JWT_Auth {
         if (!$user_id) {
             return new WP_Error(
                 'not_authenticated',
-                __('کاربر احراز هویت نشده است.', 'sales-dashboard'),
+                __('User is not authenticated.', 'sales-dashboard'),
                 array('status' => 401)
             );
         }
@@ -175,8 +186,9 @@ class Sales_Dashboard_JWT_Auth {
      * Generate JWT token
      */
     private function generate_token($user) {
-        $issued_at = time();
-        $expiration_time = $issued_at + (7 * 24 * 60 * 60); // 7 days
+    $issued_at = time();
+    $ttl = apply_filters('sales_dashboard_jwt_ttl', 7 * 24 * 60 * 60); // default 7 days
+    $expiration_time = $issued_at + (int) max(60, $ttl);
         
         $payload = array(
             'iss' => get_site_url(),
@@ -210,6 +222,29 @@ class Sales_Dashboard_JWT_Auth {
         $signature_encoded = $this->base64url_encode($signature);
         
         return $header_encoded . '.' . $payload_encoded . '.' . $signature_encoded;
+    }
+
+    /**
+     * Add token to blacklist until its expiration
+     */
+    private function blacklist_token($token, $exp_ts = null) {
+        if (!$token) return false;
+        $hash = hash('sha256', $token);
+        $ttl = 7 * 24 * 60 * 60; // default 7 days
+        if ($exp_ts && $exp_ts > time()) {
+            $ttl = max(60, $exp_ts - time());
+        }
+        set_transient('sdp_jwt_blacklist_' . $hash, 1, $ttl);
+        return true;
+    }
+
+    /**
+     * Check if token is blacklisted
+     */
+    private function is_token_blacklisted($token) {
+        if (!$token) return false;
+        $hash = hash('sha256', $token);
+        return (bool) get_transient('sdp_jwt_blacklist_' . $hash);
     }
     
     /**
@@ -269,6 +304,11 @@ class Sales_Dashboard_JWT_Auth {
         if (!$token) {
             return $user_id;
         }
+
+        // Deny if token has been blacklisted via logout
+        if ($this->is_token_blacklisted($token)) {
+            return $user_id;
+        }
         
         $payload = $this->decode_jwt($token);
         
@@ -319,6 +359,22 @@ class Sales_Dashboard_JWT_Auth {
         
         $user = get_user_by('id', $user_id);
         return $this->user_can_access_dashboard($user);
+    }
+
+    /**
+     * Logout endpoint: blacklist current token
+     */
+    public function logout($request) {
+        $token = $this->get_auth_header();
+        if (!$token) {
+            // Idempotent: treat missing token as logged out
+            return array('success' => true);
+        }
+
+        $payload = $this->decode_jwt($token);
+        $exp = is_array($payload) && isset($payload['exp']) ? intval($payload['exp']) : null;
+        $this->blacklist_token($token, $exp);
+        return array('success' => true);
     }
     
     /**

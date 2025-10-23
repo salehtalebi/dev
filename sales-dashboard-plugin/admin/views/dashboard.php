@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
                 
                 <!-- Stats Overview -->
                 <div class="postbox">
-                    <h2 class="hndle"><?php _e('خلاصه آمار', 'sales-dashboard'); ?></h2>
+                    <h2 class="hndle"><?php _e('Stats Summary', 'sales-dashboard'); ?></h2>
                     <div class="inside">
                         <div class="sales-stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
                             <div class="stat-box" style="text-align: center; padding: 20px; background: #f0f6ff; border-radius: 8px;">
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
                                     <?php echo number_format($stats['total_orders']); ?>
                                 </div>
                                 <div style="color: #6b7280; margin-top: 5px;">
-                                    <?php _e('کل سفارشات', 'sales-dashboard'); ?>
+                                    <?php _e('Total Orders', 'sales-dashboard'); ?>
                                 </div>
                             </div>
                             
@@ -30,7 +30,7 @@ if (!defined('ABSPATH')) {
                                     <?php echo number_format($stats['total_customers']); ?>
                                 </div>
                                 <div style="color: #6b7280; margin-top: 5px;">
-                                    <?php _e('کل مشتریان', 'sales-dashboard'); ?>
+                                    <?php _e('Total Customers', 'sales-dashboard'); ?>
                                 </div>
                             </div>
                             
@@ -39,7 +39,7 @@ if (!defined('ABSPATH')) {
                                     <?php echo number_format($stats['account_managers']); ?>
                                 </div>
                                 <div style="color: #6b7280; margin-top: 5px;">
-                                    <?php _e('مدیران حساب', 'sales-dashboard'); ?>
+                                    <?php _e('Account Managers', 'sales-dashboard'); ?>
                                 </div>
                             </div>
                             
@@ -48,7 +48,7 @@ if (!defined('ABSPATH')) {
                                     <?php echo number_format($stats['assigned_customers']); ?>
                                 </div>
                                 <div style="color: #6b7280; margin-top: 5px;">
-                                    <?php _e('مشتریان تخصیص یافته', 'sales-dashboard'); ?>
+                                    <?php _e('Assigned Customers', 'sales-dashboard'); ?>
                                 </div>
                             </div>
                         </div>
@@ -57,22 +57,22 @@ if (!defined('ABSPATH')) {
                 
                 <!-- Quick Actions -->
                 <div class="postbox">
-                    <h2 class="hndle"><?php _e('دسترسی سریع', 'sales-dashboard'); ?></h2>
+                    <h2 class="hndle"><?php _e('Quick Access', 'sales-dashboard'); ?></h2>
                     <div class="inside">
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
                             <a href="<?php echo admin_url('admin.php?page=sales-dashboard-settings'); ?>" class="button button-primary button-large" style="text-decoration: none; text-align: center; padding: 20px;">
                                 <span class="dashicons dashicons-admin-settings" style="margin-top: 4px;"></span><br>
-                                <?php _e('تنظیمات', 'sales-dashboard'); ?>
+                                <?php _e('Settings', 'sales-dashboard'); ?>
                             </a>
                             
                             <a href="<?php echo admin_url('admin.php?page=sales-dashboard-managers'); ?>" class="button button-primary button-large" style="text-decoration: none; text-align: center; padding: 20px;">
                                 <span class="dashicons dashicons-businessperson" style="margin-top: 4px;"></span><br>
-                                <?php _e('مدیران حساب', 'sales-dashboard'); ?>
+                                <?php _e('Account Managers', 'sales-dashboard'); ?>
                             </a>
                             
                             <a href="<?php echo admin_url('edit.php?post_type=shop_order'); ?>" class="button button-primary button-large" style="text-decoration: none; text-align: center; padding: 20px;">
                                 <span class="dashicons dashicons-cart" style="margin-top: 4px;"></span><br>
-                                <?php _e('مدیریت سفارشات', 'sales-dashboard'); ?>
+                                <?php _e('Manage Orders', 'sales-dashboard'); ?>
                             </a>
                         </div>
                     </div>
@@ -80,7 +80,7 @@ if (!defined('ABSPATH')) {
                 
                 <!-- API Information -->
                 <div class="postbox">
-                    <h2 class="hndle"><?php _e('اطلاعات API', 'sales-dashboard'); ?></h2>
+                    <h2 class="hndle"><?php _e('API Information', 'sales-dashboard'); ?></h2>
                     <div class="inside">
                         <table class="wp-list-table widefat fixed striped">
                             <tbody>
@@ -93,16 +93,16 @@ if (!defined('ABSPATH')) {
                                     <td>JWT Token</td>
                                 </tr>
                                 <tr>
-                                    <td><strong><?php _e('نسخه پلاگین', 'sales-dashboard'); ?></strong></td>
+                                    <td><strong><?php _e('Plugin Version', 'sales-dashboard'); ?></strong></td>
                                     <td><?php echo SALES_DASHBOARD_VERSION; ?></td>
                                 </tr>
                                 <tr>
-                                    <td><strong><?php _e('وضعیت WooCommerce', 'sales-dashboard'); ?></strong></td>
+                                    <td><strong><?php _e('WooCommerce Status', 'sales-dashboard'); ?></strong></td>
                                     <td>
                                         <?php if (class_exists('WooCommerce')): ?>
-                                            <span class="dashicons dashicons-yes-alt" style="color: green;"></span> فعال (نسخه <?php echo WC()->version; ?>)
+                                            <span class="dashicons dashicons-yes-alt" style="color: green;"></span> Active (version <?php echo WC()->version; ?>)
                                         <?php else: ?>
-                                            <span class="dashicons dashicons-dismiss" style="color: red;"></span> غیرفعال
+                                            <span class="dashicons dashicons-dismiss" style="color: red;"></span> Inactive
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -113,7 +113,7 @@ if (!defined('ABSPATH')) {
                 
                 <!-- Recent Activity -->
                 <div class="postbox">
-                    <h2 class="hndle"><?php _e('فعالیت‌های اخیر', 'sales-dashboard'); ?></h2>
+                    <h2 class="hndle"><?php _e('Recent Activity', 'sales-dashboard'); ?></h2>
                     <div class="inside">
                         <?php
                         // Get recent orders
@@ -138,7 +138,7 @@ if (!defined('ABSPATH')) {
                             <?php endforeach; ?>
                         </ul>
                         <?php else: ?>
-                        <p><?php _e('هیچ سفارشی یافت نشد.', 'sales-dashboard'); ?></p>
+                        <p><?php _e('No orders found.', 'sales-dashboard'); ?></p>
                         <?php endif; ?>
                     </div>
                 </div>
