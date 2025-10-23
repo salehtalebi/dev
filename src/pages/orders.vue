@@ -61,6 +61,7 @@
                   clearable
                 />
               </VCol>
+              
               <VCol cols="12" md="2">
                 <VSelect
                   v-model="localFilters.dateRange"
@@ -69,14 +70,6 @@
                   item-value="value"
                   label="Date Range"
                   clearable
-                />
-              </VCol>
-              <VCol cols="12" md="2">
-                <VTextField
-                  v-model="localFilters.min_amount"
-                  label="Min Amount"
-                  type="number"
-                  suffix="USD"
                 />
               </VCol>
               <VCol cols="12" md="2" class="d-flex align-center gap-2">
@@ -96,23 +89,31 @@
               </VCol>
             </VRow>
             
-            <!-- Custom Date Range & Max Amount -->
-            <VRow v-if="localFilters.dateRange === 'custom' || localFilters.min_amount">
-              <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
+            <!-- Custom Date Range & Amount Filters -->
+            <VRow v-if="localFilters.dateRange === 'custom'">
+              <VCol cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_from"
                   label="From Date"
                   type="date"
                 />
               </VCol>
-              <VCol v-if="localFilters.dateRange === 'custom'" cols="12" md="3">
+              <VCol cols="12" md="3">
                 <VTextField
                   v-model="localFilters.date_to"
                   label="To Date"
                   type="date"
                 />
               </VCol>
-              <VCol v-if="localFilters.min_amount" cols="12" md="3">
+              <VCol cols="12" md="3">
+                <VTextField
+                  v-model="localFilters.min_amount"
+                  label="Min Amount"
+                  type="number"
+                  suffix="USD"
+                />
+              </VCol>
+              <VCol cols="12" md="3">
                 <VTextField
                   v-model="localFilters.max_amount"
                   label="Max Amount"
@@ -180,6 +181,11 @@
                     {{ item.billing.email }}
                   </div>
                 </div>
+              </template>
+
+              <!-- Province -->
+              <template #item.province="{ item }">
+                {{ item.billing?.state || '-' }}
               </template>
 
               <!-- Status -->
@@ -363,6 +369,7 @@ const orderStatuses = computed(() => ordersStore.orderStatuses)
 const headers = [
   { title: 'Order Number', key: 'id', sortable: true },
   { title: 'Customer', key: 'customer', sortable: false },
+  { title: 'Province', key: 'province', sortable: false },
   { title: 'Status', key: 'status', sortable: true },
   { title: 'Total Amount', key: 'total', sortable: true },
   { title: 'Date', key: 'date_created', sortable: true },

@@ -54,7 +54,11 @@ class Sales_Dashboard_Export {
             }
 
             $format = $request->get_param('format') ?: 'csv';
-            $limit = min($request->get_param('limit') ?: 1000, 5000);
+            // Get all orders for export (no limit)
+            $limit = $request->get_param('limit') ?: -1;
+            if ($limit > 0) {
+                $limit = min($limit, 10000); // Max 10000 if specified
+            }
             
             // Build WC_Order_Query arguments similar to get_enhanced_orders
             $args = array(
@@ -65,16 +69,19 @@ class Sales_Dashboard_Export {
             );
             
             // Apply filters from request
-            if ($request->get_param('status')) {
+            if ($request->get_param('status') && $request->get_param('status') !== '' && $request->get_param('status') !== 'null') {
                 $args['status'] = $request->get_param('status');
             }
             
-            if ($request->get_param('search')) {
-                $args['search'] = $request->get_param('search');
+            if ($request->get_param('search') && $request->get_param('search') !== '' && $request->get_param('search') !== 'null') {
+                $search = trim($request->get_param('search'));
+                if ($search !== '' && $search !== 'null') {
+                    $args['search'] = $search;
+                }
             }
             
             // Handle account manager filter
-            if ($request->get_param('accountManager')) {
+            if ($request->get_param('accountManager') && $request->get_param('accountManager') !== '' && $request->get_param('accountManager') !== 'null') {
                 $manager_id = $request->get_param('accountManager');
                 $customers = get_users(array(
                     'meta_key' => 'account_manager_id',
@@ -85,12 +92,12 @@ class Sales_Dashboard_Export {
                 if (!empty($customers)) {
                     $args['customer'] = $customers;
                 } else {
-                    return new WP_Error('no_customers', 'هیچ مشتری برای این مدیر حساب یافت نشد', array('status' => 400));
+                    return new WP_Error('no_customers', 'No customers found for this account manager', array('status' => 400));
                 }
             }
             
             // Handle date range filters
-            if ($request->get_param('dateRange')) {
+            if ($request->get_param('dateRange') && $request->get_param('dateRange') !== '' && $request->get_param('dateRange') !== 'null') {
                 $date_range = $request->get_param('dateRange');
                 $date_args = $this->get_date_range_args($date_range);
                 if ($date_args) {
@@ -98,15 +105,31 @@ class Sales_Dashboard_Export {
                 }
             } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
                 // Handle custom date range
-                if ($request->get_param('date_from')) {
-                    $args['date_created'] = '>=' . $request->get_param('date_from');
+                $date_from = $request->get_param('date_from');
+                $date_to = $request->get_param('date_to');
+                
+                if ($date_from && $date_from !== '' && $date_from !== 'null') {
+                    $args['date_created'] = '>=' . $date_from;
                 }
-                if ($request->get_param('date_to')) {
-                    $end_date = $request->get_param('date_to') . ' 23:59:59';
+                if ($date_to && $date_to !== '' && $date_to !== 'null') {
+                    $end_date = $date_to . ' 23:59:59';
                     $args['date_created'] = isset($args['date_created']) 
                         ? $args['date_created'] . '...' . $end_date
                         : '<=' . $end_date;
                 }
+            }
+
+            // Handle province filter (optimized with meta_query)
+            if ($request->get_param('province') && $request->get_param('province') !== '' && $request->get_param('province') !== 'null') {
+                $province = sanitize_text_field($request->get_param('province'));
+                if (!isset($args['meta_query'])) {
+                    $args['meta_query'] = array();
+                }
+                $args['meta_query'][] = array(
+                    'key' => '_billing_state',
+                    'value' => $province,
+                    'compare' => '='
+                );
             }
             
             // Execute query
@@ -114,7 +137,7 @@ class Sales_Dashboard_Export {
             $orders = $order_query->get_orders();
             
             if (empty($orders)) {
-                return new WP_Error('no_orders', 'هیچ سفارشی برای اکسپورت یافت نشد', array('status' => 400));
+                return new WP_Error('no_orders', 'No orders found for export', array('status' => 400));
             }
             
             $export_data = array();
@@ -124,37 +147,37 @@ class Sales_Dashboard_Export {
                 $min_amount = $request->get_param('min_amount');
                 $max_amount = $request->get_param('max_amount');
                 
-                if ($min_amount !== null && $min_amount !== '') {
+                if ($min_amount !== null && $min_amount !== '' && $min_amount !== 'null') {
                     if (floatval($order->get_total()) < floatval($min_amount)) {
                         continue;
                     }
                 }
                 
-                if ($max_amount !== null && $max_amount !== '') {
+                if ($max_amount !== null && $max_amount !== '' && $max_amount !== 'null') {
                     if (floatval($order->get_total()) > floatval($max_amount)) {
                         continue;
                     }
                 }
                 
                 $export_data[] = array(
-                    'شماره سفارش' => $order->get_order_number(),
-                    'وضعیت' => wc_get_order_status_name($order->get_status()),
-                    'تاریخ' => $order->get_date_created()->date('Y-m-d H:i:s'),
-                    'مشتری' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-                    'ایمیل' => $order->get_billing_email(),
-                    'تلفن' => $order->get_billing_phone(),
-                    'مبلغ کل' => $order->get_total(),
-                    'ارز' => $order->get_currency(),
-                    'روش پرداخت' => $order->get_payment_method_title(),
-                    'آدرس' => $order->get_billing_address_1() . ' ' . $order->get_billing_address_2(),
-                    'شهر' => $order->get_billing_city(),
-                    'استان' => $order->get_billing_state(),
-                    'کد پستی' => $order->get_billing_postcode()
+                    'Order Number' => $order->get_order_number(),
+                    'Status' => wc_get_order_status_name($order->get_status()),
+                    'Date' => $order->get_date_created()->date('Y-m-d H:i:s'),
+                    'Customer' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                    'Email' => $order->get_billing_email(),
+                    'Phone' => $order->get_billing_phone(),
+                    'Total Amount' => $order->get_total(),
+                    'Currency' => $order->get_currency(),
+                    'Payment Method' => $order->get_payment_method_title(),
+                    'Address' => $order->get_billing_address_1() . ' ' . $order->get_billing_address_2(),
+                    'City' => $order->get_billing_city(),
+                    'Province' => $order->get_billing_state(),
+                    'Postal Code' => $order->get_billing_postcode()
                 );
             }
             
             if (empty($export_data)) {
-                return new WP_Error('no_orders', 'هیچ سفارشی برای اکسپورت یافت نشد', array('status' => 400));
+                return new WP_Error('no_orders', 'No orders found for export', array('status' => 400));
             }
             
             // Generate CSV or Excel file
@@ -166,7 +189,7 @@ class Sales_Dashboard_Export {
             
         } catch (Exception $e) {
             error_log('Export Error: ' . $e->getMessage());
-            return new WP_Error('export_error', 'خطا در ایجاد فایل خروجی: ' . $e->getMessage(), array('status' => 500));
+            return new WP_Error('export_error', 'Error creating export file: ' . $e->getMessage(), array('status' => 500));
         }
     }
     
@@ -215,7 +238,11 @@ class Sales_Dashboard_Export {
     public function export_customers($request) {
         try {
             $format = $request->get_param('format') ?: 'csv';
-            $limit = min($request->get_param('limit') ?: 1000, 5000);
+            // Get all customers for export (no limit)
+            $limit = $request->get_param('limit') ?: -1;
+            if ($limit > 0) {
+                $limit = min($limit, 10000); // Max 10000 if specified
+            }
             
             // Build WP_User_Query arguments
             $args = array(
@@ -224,15 +251,99 @@ class Sales_Dashboard_Export {
             );
             
             // Apply filters from request
-            if ($request->get_param('search')) {
-                $args['search'] = '*' . esc_attr($request->get_param('search')) . '*';
+            if ($request->get_param('search') && $request->get_param('search') !== 'null') {
+                $search = trim($request->get_param('search'));
+                if ($search !== '' && $search !== 'null') {
+                    $args['search'] = '*' . esc_attr($search) . '*';
+                }
             }
             
             // Handle account manager filter
-            if ($request->get_param('accountManager')) {
+            if ($request->get_param('accountManager') && $request->get_param('accountManager') !== '') {
                 $manager_id = $request->get_param('accountManager');
                 $args['meta_key'] = 'account_manager_id';
                 $args['meta_value'] = $manager_id;
+            }
+
+            // Handle province filter (optimized with meta_query)
+            if ($request->get_param('province') && $request->get_param('province') !== '') {
+                $province = sanitize_text_field($request->get_param('province'));
+                
+                // If we already have a meta_key/value for account manager, convert to meta_query
+                if (isset($args['meta_key'])) {
+                    $args['meta_query'] = array(
+                        'relation' => 'AND',
+                        array(
+                            'key' => $args['meta_key'],
+                            'value' => $args['meta_value'],
+                            'compare' => '='
+                        ),
+                        array(
+                            'key' => 'billing_state',
+                            'value' => $province,
+                            'compare' => '='
+                        )
+                    );
+                    unset($args['meta_key']);
+                    unset($args['meta_value']);
+                } else {
+                    $args['meta_key'] = 'billing_state';
+                    $args['meta_value'] = $province;
+                }
+            }
+
+            // Handle date registered filters
+            $date_query = array();
+            
+            // Priority: custom date range over dateRange
+            $has_custom_dates = ($request->get_param('date_registered_from') && $request->get_param('date_registered_from') !== '' && $request->get_param('date_registered_from') !== 'null') ||
+                               ($request->get_param('date_from') && $request->get_param('date_from') !== '' && $request->get_param('date_from') !== 'null') ||
+                               ($request->get_param('date_registered_to') && $request->get_param('date_registered_to') !== '' && $request->get_param('date_registered_to') !== 'null') ||
+                               ($request->get_param('date_to') && $request->get_param('date_to') !== '' && $request->get_param('date_to') !== 'null');
+            
+            if ($has_custom_dates) {
+                // Use custom date range
+                if ($request->get_param('date_registered_from') || $request->get_param('date_from')) {
+                    $date_from = $request->get_param('date_registered_from') ?: $request->get_param('date_from');
+                    if ($date_from && $date_from !== '' && $date_from !== 'null') {
+                        $date_query['after'] = $date_from;
+                    }
+                }
+                if ($request->get_param('date_registered_to') || $request->get_param('date_to')) {
+                    $date_to = $request->get_param('date_registered_to') ?: $request->get_param('date_to');
+                    if ($date_to && $date_to !== '' && $date_to !== 'null') {
+                        $date_query['before'] = $date_to . ' 23:59:59';
+                    }
+                }
+            } elseif ($request->get_param('dateRange') && $request->get_param('dateRange') !== '' && $request->get_param('dateRange') !== 'null') {
+                // Use predefined date range
+                $date_range = $request->get_param('dateRange');
+                switch ($date_range) {
+                    case 'last_year':
+                        $date_query['after'] = date('Y-01-01', strtotime('-1 year'));
+                        $date_query['before'] = date('Y-12-31', strtotime('-1 year')) . ' 23:59:59';
+                        break;
+                    case 'this_year':
+                        $date_query['after'] = date('Y-01-01');
+                        break;
+                    case 'last_month':
+                        $date_query['after'] = date('Y-m-01', strtotime('-1 month'));
+                        $date_query['before'] = date('Y-m-t', strtotime('-1 month')) . ' 23:59:59';
+                        break;
+                    case 'this_month':
+                        $date_query['after'] = date('Y-m-01');
+                        break;
+                    case 'last_7_days':
+                        $date_query['after'] = date('Y-m-d', strtotime('-7 days'));
+                        break;
+                    case 'last_30_days':
+                        $date_query['after'] = date('Y-m-d', strtotime('-30 days'));
+                        break;
+                }
+            }
+            
+            if (!empty($date_query)) {
+                $args['date_query'] = array($date_query);
             }
             
             // Execute query
@@ -240,7 +351,7 @@ class Sales_Dashboard_Export {
             $users = $customer_query->get_results();
             
             if (empty($users)) {
-                return new WP_Error('no_customers', 'هیچ مشتری برای اکسپورت یافت نشد', array('status' => 400));
+                return new WP_Error('no_customers', 'No customers found for export', array('status' => 400));
             }
             
             $export_data = array();
@@ -260,24 +371,25 @@ class Sales_Dashboard_Export {
                 }
                 
                 $export_data[] = array(
-                    'شناسه مشتری' => $customer->get_id(),
-                    'نام' => $customer->get_first_name(),
-                    'نام خانوادگی' => $customer->get_last_name(),
-                    'ایمیل' => $customer->get_email(),
-                    'تلفن' => $customer->get_billing_phone(),
-                    'شرکت' => $customer->get_billing_company(),
-                    'آدرس' => $customer->get_billing_address_1() . ' ' . $customer->get_billing_address_2(),
-                    'شهر' => $customer->get_billing_city(),
-                    'کد پستی' => $customer->get_billing_postcode(),
-                    'تعداد سفارشات' => $order_count,
-                    'مجموع خرید' => $total_spent,
-                    'تاریخ عضویت' => $customer->get_date_created() ? $customer->get_date_created()->date('Y-m-d H:i:s') : '',
-                    'مدیر حساب' => $manager_name
+                    'Customer ID' => $customer->get_id(),
+                    'First Name' => $customer->get_first_name(),
+                    'Last Name' => $customer->get_last_name(),
+                    'Email' => $customer->get_email(),
+                    'Phone' => $customer->get_billing_phone(),
+                    'Company' => $customer->get_billing_company(),
+                    'Address' => $customer->get_billing_address_1() . ' ' . $customer->get_billing_address_2(),
+                    'City' => $customer->get_billing_city(),
+                    'Province' => $customer->get_billing_state(),
+                    'Postal Code' => $customer->get_billing_postcode(),
+                    'Total Orders' => $order_count,
+                    'Total Spent' => $total_spent,
+                    'Registration Date' => $customer->get_date_created() ? $customer->get_date_created()->date('Y-m-d H:i:s') : '',
+                    'Account Manager' => $manager_name
                 );
             }
             
             if (empty($export_data)) {
-                return new WP_Error('no_customers', 'هیچ مشتری برای اکسپورت یافت نشد', array('status' => 400));
+                return new WP_Error('no_customers', 'No customers found for export', array('status' => 400));
             }
             
             // Generate CSV or Excel file
@@ -289,7 +401,7 @@ class Sales_Dashboard_Export {
             
         } catch (Exception $e) {
             error_log('Export Customers Error: ' . $e->getMessage());
-            return new WP_Error('export_error', 'خطا در ایجاد فایل خروجی: ' . $e->getMessage(), array('status' => 500));
+            return new WP_Error('export_error', 'Error creating export file: ' . $e->getMessage(), array('status' => 500));
         }
     }
     
@@ -352,7 +464,7 @@ class Sales_Dashboard_Export {
         }
         
         if (empty($analytics_data)) {
-            return new WP_Error('no_data', 'هیچ داده‌ای برای اکسپورت یافت نشد', array('status' => 400));
+            return new WP_Error('no_data', 'No data found for export', array('status' => 400));
         }
         
         // Generate export data

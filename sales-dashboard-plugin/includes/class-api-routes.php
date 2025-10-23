@@ -429,7 +429,9 @@ class Sales_Dashboard_API_Routes {
                 'limit' => min($request->get_param('per_page') ?: 20, 100),
                 'page' => $request->get_param('page') ?: 1,
                 'orderby' => $request->get_param('orderby') ?: 'date',
-                'order' => $request->get_param('order') ?: 'DESC'
+                'order' => $request->get_param('order') ?: 'DESC',
+                // Avoid refunds objects in results
+                'type' => 'shop_order'
             );
             
             if ($request->get_param('status')) {
@@ -440,11 +442,11 @@ class Sales_Dashboard_API_Routes {
                 $args['customer'] = $request->get_param('customer');
             }
             
-            if ($request->get_param('search')) {
-                // We'll capture raw search for post-filtering (WC core search is limited)
-                $raw_search = sanitize_text_field($request->get_param('search'));
-                $args['search'] = $raw_search; // Basic integration; further filtering below
-                $args['paginate'] = false; // ensure we can manually slice later if needed
+            // For search, we need to get more records since we filter post-query
+            $has_search = $request->get_param('search');
+            if ($has_search) {
+                $args['limit'] = 1000; // Get more orders to search through
+                $args['paginate'] = false;
             }
             
             // Handle date range filters
@@ -490,17 +492,32 @@ class Sales_Dashboard_API_Routes {
                 }
             }
             
+            // Province filter flag and value (we'll apply manually for consistency across HPOS/legacy)
+            $province_param = $request->get_param('province');
+            $has_province_filter = ($province_param !== null && $province_param !== '' && $province_param !== 'null');
+            $province = $has_province_filter ? sanitize_text_field($province_param) : '';
+
+            // Check if we have amount filters (these require post-query filtering)
+            $min_amount = $request->get_param('min_amount');
+            $max_amount = $request->get_param('max_amount');
+            $has_amount_filter = ($min_amount !== null && $min_amount !== '') || 
+                                 ($max_amount !== null && $max_amount !== '');
+            
             // Get total count for pagination (optimized, but aligned with filters)
             $count_args = array(
                 'return' => 'ids',
                 'status' => $args['status'] ?? 'any',
                 'limit' => -1,
+                // Only count real orders, not refunds
+                'type' => 'shop_order',
             );
 
             // Apply customer filter for count if exists
             if (isset($args['customer'])) {
                 $count_args['customer'] = $args['customer'];
             }
+
+            // Do NOT push province into count meta_query; we'll apply it manually to ensure HPOS compatibility
 
             // Apply date filters for count if present
             if ($request->get_param('date_range')) {
@@ -521,36 +538,105 @@ class Sales_Dashboard_API_Routes {
                 }
             }
 
-            // Get count using IDs only (less memory)
+            // Get initial ID set using count args (status/date/customer etc.)
             $count_query = new WC_Order_Query($count_args);
             $count_ids = $count_query->get_orders();
 
-            // If amount filters are present, count only those that match
+            // Collect filters that require manual evaluation (amount, province)
             $min_amount = $request->get_param('min_amount');
             $max_amount = $request->get_param('max_amount');
-            if (($min_amount !== null && $min_amount !== '') || ($max_amount !== null && $max_amount !== '')) {
-                $filtered_count = 0;
+            $has_amount_filter = ($min_amount !== null && $min_amount !== '') || ($max_amount !== null && $max_amount !== '');
+
+            $needs_manual_filtering = $has_amount_filter || $has_province_filter;
+
+            if ($needs_manual_filtering && is_array($count_ids)) {
+                $manually_filtered_ids = array();
                 foreach ($count_ids as $order_id) {
                     $o = wc_get_order($order_id);
                     if (!$o) continue;
-                    $total_val = floatval($o->get_total());
-                    if ($min_amount !== null && $min_amount !== '' && $total_val < floatval($min_amount)) continue;
-                    if ($max_amount !== null && $max_amount !== '' && $total_val > floatval($max_amount)) continue;
-                    $filtered_count++;
+                    // Safety: skip refund objects defensively
+                    if (is_a($o, 'WC_Order_Refund') || is_a($o, '\\Automattic\\WooCommerce\\Admin\\Overrides\\OrderRefund')) continue;
+
+                    // Province filter (shipping state ONLY per requirement)
+                    if ($has_province_filter) {
+                        $sstate = $o->get_shipping_state();
+                        if (!$sstate || strtoupper($sstate) !== strtoupper($province)) continue;
+                    }
+
+                    // Amount filter
+                    if ($has_amount_filter) {
+                        $total_val = floatval($o->get_total());
+                        if ($min_amount !== null && $min_amount !== '' && $total_val < floatval($min_amount)) continue;
+                        if ($max_amount !== null && $max_amount !== '' && $total_val > floatval($max_amount)) continue;
+                    }
+
+                    $manually_filtered_ids[] = $order_id;
                 }
-                $total_orders = $filtered_count;
-            } else {
-                $total_orders = is_array($count_ids) ? count($count_ids) : intval($count_ids);
+
+                $count_ids = $manually_filtered_ids;
             }
+
+            $total_orders = is_array($count_ids) ? count($count_ids) : intval($count_ids);
             
-            // Limit the main query to avoid memory issues
-            $args['limit'] = min($args['limit'], 100); // Max 100 orders per page
+            // Adjust query limit if amount filter is present (need to get more orders to filter)
+            if ($needs_manual_filtering) {
+                // Get more orders than needed to account for post-filtering
+                // For amount filtering, we need to get all filtered IDs and slice them
+                // Use the count_ids we already have (which includes amount filter)
+                if (is_array($count_ids) && count($count_ids) > 0) {
+                    $requested_per_page = intval($request->get_param('per_page') ?: 20);
+                    $current_page = intval($request->get_param('page') ?: 1);
+                    
+                    // Slice the IDs for current page
+                    $start = ($current_page - 1) * $requested_per_page;
+                    $page_ids = array_slice($count_ids, $start, $requested_per_page);
+                    
+                    // Update args to get only these specific orders
+                    if (!empty($page_ids)) {
+                        // Remove pagination params and use include instead
+                        unset($args['limit']);
+                        unset($args['page']);
+                        $args['include'] = $page_ids;
+                        $args['orderby'] = 'include'; // Maintain order from array
+                    } else {
+                        // No orders for this page
+                        return array(
+                            'data' => array(),
+                            'total' => $total_orders,
+                            'page' => $current_page,
+                            'per_page' => $requested_per_page,
+                            'pages' => ceil($total_orders / $requested_per_page)
+                        );
+                    }
+                }
+            } else {
+                // No amount filter, use normal pagination
+                $args['limit'] = min($args['limit'], 100); // Max 100 orders per page
+            }
+
+            // Check if search is present (requires post-query filtering)
+            $has_search = $request->get_param('search');
+            
+            // If search is present and we have amount filter, we need to get all filtered IDs
+            if ($has_search && $has_amount_filter && is_array($count_ids)) {
+                // Get all filtered orders (not just current page) for searching
+                unset($args['include']);
+                unset($args['limit']);
+                unset($args['page']);
+                $args['include'] = $count_ids;
+                $args['orderby'] = 'date';
+                $args['order'] = 'DESC';
+            } elseif ($has_search && !$needs_manual_filtering) {
+                // Get more orders for searching when no amount filter
+                $args['limit'] = 1000;
+                unset($args['page']); // Don't use built-in pagination for search
+            }
             
             $order_query = new WC_Order_Query($args);
             $orders = $order_query->get_orders();
 
             // Enhanced post-filter search (email, name, id) if search supplied
-            if ($request->get_param('search')) {
+            if ($has_search) {
                 $search_term = strtolower(sanitize_text_field($request->get_param('search')));
                 $orders = array_filter($orders, function($order) use ($search_term) {
                     if (!$order) return false;
@@ -567,22 +653,6 @@ class Sales_Dashboard_API_Routes {
             foreach ($orders as $order) {
                 $order_data = $this->format_order_data($order);
                 
-                // Apply amount filtering (post-query filtering)
-                $min_amount = $request->get_param('min_amount');
-                $max_amount = $request->get_param('max_amount');
-                
-                if ($min_amount !== null && $min_amount !== '') {
-                    if (floatval($order->get_total()) < floatval($min_amount)) {
-                        continue; // Skip this order
-                    }
-                }
-                
-                if ($max_amount !== null && $max_amount !== '') {
-                    if (floatval($order->get_total()) > floatval($max_amount)) {
-                        continue; // Skip this order
-                    }
-                }
-                
                 // Add account manager info
                 $customer_id = $order->get_customer_id();
                 if ($customer_id) {
@@ -598,31 +668,40 @@ class Sales_Dashboard_API_Routes {
                 gc_collect_cycles();
             }
             
-            // If search applied after filtering, adjust total & pagination based on filtered set
-            if ($request->get_param('search')) {
-                $filtered_total = count($formatted_orders);
-                $page = intval($request->get_param('page') ?: 1);
-                $per_page = intval($request->get_param('per_page') ?: 20);
-                $sliced = array_slice($formatted_orders, ($page - 1) * $per_page, $per_page);
+            // Build response
+            $page = intval($request->get_param('page') ?: 1);
+            $per_page = intval($request->get_param('per_page') ?: 20);
+            
+            // If search was applied, recalculate total and paginate
+            if ($has_search) {
+                $search_total = count($formatted_orders);
+                $pages = $per_page > 0 ? ceil($search_total / $per_page) : 1;
+                
+                // Slice for current page
+                $start = ($page - 1) * $per_page;
+                $formatted_orders = array_slice($formatted_orders, $start, $per_page);
+                
                 $response_payload = array(
-                    'data' => $sliced,
-                    'total' => $filtered_total,
+                    'data' => $formatted_orders,
+                    'total' => $search_total,
                     'page' => $page,
                     'per_page' => $per_page,
-                    'pages' => $per_page > 0 ? ceil($filtered_total / $per_page) : 1
+                    'pages' => $pages
                 );
             } else {
+                $pages = $per_page > 0 ? ceil($total_orders / $per_page) : 1;
+                
                 $response_payload = array(
                     'data' => $formatted_orders,
                     'total' => $total_orders,
-                    'page' => intval($request->get_param('page') ?: 1),
-                    'per_page' => intval($request->get_param('per_page') ?: 20),
-                    'pages' => ceil($total_orders / intval($request->get_param('per_page') ?: 20))
+                    'page' => $page,
+                    'per_page' => $per_page,
+                    'pages' => $pages
                 );
             }
 
             $resp = new WP_REST_Response($response_payload);
-            $resp->header('X-WP-Total', $total_orders);
+            $resp->header('X-WP-Total', $response_payload['total']);
             $resp->header('X-WP-TotalPages', $response_payload['pages']);
             return $resp;
             
@@ -660,6 +739,33 @@ class Sales_Dashboard_API_Routes {
             $args['meta_value'] = $manager_id;
         }
 
+        // Handle province filter with meta_query (pre-query filtering)
+        if ($request->get_param('province')) {
+            $province = sanitize_text_field($request->get_param('province'));
+            
+            // If we already have meta_key/value for account manager, convert to meta_query
+            if (isset($args['meta_key'])) {
+                $args['meta_query'] = array(
+                    'relation' => 'AND',
+                    array(
+                        'key' => $args['meta_key'],
+                        'value' => $args['meta_value'],
+                        'compare' => '='
+                    ),
+                    array(
+                        'key' => 'billing_state',
+                        'value' => $province,
+                        'compare' => '='
+                    )
+                );
+                unset($args['meta_key']);
+                unset($args['meta_value']);
+            } else {
+                $args['meta_key'] = 'billing_state';
+                $args['meta_value'] = $province;
+            }
+        }
+
         // Date registered filters
         $date_query = array();
         if ($request->get_param('date_from')) {
@@ -680,6 +786,7 @@ class Sales_Dashboard_API_Routes {
         $formatted_customers = array();
         foreach ($customers as $user) {
             $customer = new WC_Customer($user->ID);
+            
             $customer_data = $this->format_customer_data($customer);
 
             // Add account manager info
@@ -688,7 +795,9 @@ class Sales_Dashboard_API_Routes {
             $formatted_customers[] = $customer_data;
         }
 
+        // Get total from query
         $total = intval($customer_query->get_total());
+        
         $pages = $per_page > 0 ? ceil($total / $per_page) : 1;
 
         $response_payload = array(

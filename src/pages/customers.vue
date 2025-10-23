@@ -41,7 +41,7 @@
                   clearable
                 />
               </VCol>
-              <VCol cols="12" md="3">
+              <VCol cols="12" md="2">
                 <VSelect
                   v-model="localFilters.accountManager"
                   :items="accountManagers"
@@ -51,7 +51,15 @@
                   clearable
                 />
               </VCol>
-              <VCol cols="12" md="3">
+              <VCol cols="12" md="2">
+                <VTextField
+                  v-model="localFilters.province"
+                  label="Province (State)"
+                  prepend-inner-icon="bx-map"
+                  clearable
+                />
+              </VCol>
+              <VCol cols="12" md="2">
                 <VSelect
                   v-model="localFilters.dateRange"
                   :items="dateRanges"
@@ -175,6 +183,11 @@
                 {{ item.billing?.phone || '-' }}
               </template>
 
+              <!-- Province -->
+              <template #item.province="{ item }">
+                {{ item.billing?.state || '-' }}
+              </template>
+
               <!-- Orders Count -->
               <template #item.orders_count="{ item }">
                 <VChip
@@ -245,6 +258,7 @@ const { exportCustomers: exportCustomersToFile, isExporting: exportLoading, erro
 const localFilters = ref({
   search: '',
   accountManager: '',
+  province: '',
   dateRange: '',
   date_registered_from: '',
   date_registered_to: '',
@@ -354,6 +368,7 @@ const currentPage = computed({
 const headers = [
   { title: 'Customer', key: 'name', sortable: false },
   { title: 'Phone', key: 'phone', sortable: false },
+  { title: 'Province', key: 'province', sortable: false },
   { title: 'Orders Count', key: 'orders_count', sortable: true },
   { title: 'Total Spent', key: 'total_spent', sortable: true },
   { title: 'Registration Date', key: 'date_created', sortable: true },
@@ -403,6 +418,7 @@ const clearFilters = () => {
   localFilters.value = {
     search: '',
     accountManager: '',
+    province: '',
     dateRange: '',
     date_registered_from: '',
     date_registered_to: '',

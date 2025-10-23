@@ -46,6 +46,7 @@ export const useCustomersStore = defineStore('customers', {
       search: '',
       role: '',
       accountManager: '',
+      province: '',
       dateFrom: '',
       dateTo: '',
     },
@@ -369,6 +370,7 @@ export const useCustomersStore = defineStore('customers', {
       if (this.filters.search) params.search = this.filters.search
       if (this.filters.role) params.role = this.filters.role
       if (this.filters.accountManager) params.account_manager = this.filters.accountManager
+      if (this.filters.province) params.province = this.filters.province
       // Support both normalized and raw UI keys (defensive)
       const dateFrom = this.filters.dateFrom || this.filters.date_registered_from
       const dateTo = this.filters.dateTo || this.filters.date_registered_to
@@ -383,6 +385,7 @@ export const useCustomersStore = defineStore('customers', {
         search: '',
         role: '',
         accountManager: '',
+        province: '',
         dateFrom: '',
         dateTo: '',
       }
