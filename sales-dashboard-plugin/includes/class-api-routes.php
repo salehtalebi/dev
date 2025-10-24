@@ -156,7 +156,7 @@ class Sales_Dashboard_API_Routes {
             
             // Get customer IDs assigned to this manager
             $customers = get_users(array(
-                'meta_key' => 'account_manager_id',
+                'meta_key' => '_account_manager_id',
                 'meta_value' => $manager_id,
                 'fields' => 'ID'
             ));
@@ -233,7 +233,7 @@ class Sales_Dashboard_API_Routes {
             $search = $request->get_param('search');
             
             $customers = get_users(array(
-                'meta_key' => 'account_manager_id',
+                'meta_key' => '_account_manager_id',
                 'meta_value' => $manager_id,
                 'fields' => array('ID', 'display_name', 'user_email'),
                 'search' => $search ? "*{$search}*" : ''
@@ -312,7 +312,7 @@ class Sales_Dashboard_API_Routes {
             // Filter by manager if specified
             if ($manager_id) {
                 $customers = get_users(array(
-                    'meta_key' => 'account_manager_id',
+                    'meta_key' => '_account_manager_id',
                     'meta_value' => $manager_id,
                     'fields' => 'ID'
                 ));
@@ -471,9 +471,11 @@ class Sales_Dashboard_API_Routes {
             
             // Handle account manager filter
             if ($request->get_param('account_manager')) {
-                $manager_id = $request->get_param('account_manager');
+                $manager_id = sanitize_text_field($request->get_param('account_manager'));
+                
+                // Get users assigned to this manager
                 $customers = get_users(array(
-                    'meta_key' => 'account_manager_id',
+                    'meta_key' => '_account_manager_id',
                     'meta_value' => $manager_id,
                     'fields' => 'ID'
                 ));
@@ -734,8 +736,8 @@ class Sales_Dashboard_API_Routes {
 
         // Handle account manager filter for customers
         if ($request->get_param('account_manager')) {
-            $manager_id = $request->get_param('account_manager');
-            $args['meta_key'] = 'account_manager_id';
+            $manager_id = sanitize_text_field($request->get_param('account_manager'));
+            $args['meta_key'] = '_account_manager_id';
             $args['meta_value'] = $manager_id;
         }
 
@@ -1006,9 +1008,9 @@ class Sales_Dashboard_API_Routes {
      * Get customer account manager
      */
     private function get_customer_account_manager($customer_id) {
-        $manager_id = get_user_meta($customer_id, 'account_manager_id', true);
+        $manager_id = get_user_meta($customer_id, '_account_manager_id', true);
         
-        if ($manager_id) {
+        if ($manager_id && $manager_id !== '' && $manager_id !== 'house') {
             $manager = get_user_by('id', $manager_id);
             if ($manager) {
                 return array(
@@ -1017,6 +1019,15 @@ class Sales_Dashboard_API_Routes {
                     'email' => $manager->user_email
                 );
             }
+        }
+        
+        // If manager_id is 'house' or empty, return house manager info
+        if ($manager_id === 'house' || empty($manager_id)) {
+            return array(
+                'id' => 'house',
+                'name' => 'House',
+                'email' => ''
+            );
         }
         
         return null;
