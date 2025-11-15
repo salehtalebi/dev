@@ -163,6 +163,7 @@ export const useOrdersStore = defineStore('orders', {
     async fetchOrder(orderId) {
       this.loading.detail = true
       this.error = null
+      this.currentOrder = null
 
       try {
         const api = this._getAPI()
@@ -172,6 +173,7 @@ export const useOrdersStore = defineStore('orders', {
       } catch (error) {
         this.error = error.message
         console.error('Failed to fetch order:', error)
+        this.currentOrder = null
         return null
       } finally {
         this.loading.detail = false

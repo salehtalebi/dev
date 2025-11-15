@@ -36,6 +36,15 @@ class Sales_Dashboard_Admin {
         
         add_submenu_page(
             'sales-dashboard',
+            __('User Permissions', 'sales-dashboard'),
+            __('User Permissions', 'sales-dashboard'),
+            'manage_options',
+            'sales-dashboard-permissions',
+            array($this, 'permissions_page')
+        );
+        
+        add_submenu_page(
+            'sales-dashboard',
             __('JWT Tokens', 'sales-dashboard'),
             __('JWT Tokens', 'sales-dashboard'),
             'manage_options',
@@ -426,6 +435,138 @@ class Sales_Dashboard_Admin {
             </div>
         </div>
         <?php
+    }
+    
+    /**
+     * User Permissions page
+     */
+    public function permissions_page() {
+        // Handle form submission
+        if (isset($_POST['update_permissions']) && wp_verify_nonce($_POST['permissions_nonce'], 'sales_dashboard_permissions')) {
+            $this->save_user_permissions();
+        }
+        
+        // Get all users with dashboard access
+        $users = get_users(array(
+            'role__in' => array('administrator', 'shop_manager'),
+            'orderby' => 'display_name',
+            'order' => 'ASC'
+        ));
+        
+        ?>
+        <div class="wrap">
+            <h1><?php _e('User Permissions - Sales Dashboard', 'sales-dashboard'); ?></h1>
+            
+            <?php if (isset($_GET['updated'])): ?>
+                <div class="notice notice-success is-dismissible">
+                    <p><?php _e('Permissions updated successfully!', 'sales-dashboard'); ?></p>
+                </div>
+            <?php endif; ?>
+            
+            <div class="notice notice-info">
+                <p>
+                    <strong><?php _e('How it works:', 'sales-dashboard'); ?></strong><br>
+                    <?php _e('• <strong>Super Admin</strong>: Can view ALL data including customers with _account_manager_id = "house"', 'sales-dashboard'); ?><br>
+                    <?php _e('• <strong>Account Manager</strong>: Can only view customers where _account_manager_id = their WordPress User ID', 'sales-dashboard'); ?><br>
+                    <?php _e('• User ID is automatically used as the Account Manager ID (no manual setup needed)', 'sales-dashboard'); ?>
+                </p>
+            </div>
+            
+            <form method="post" action="">
+                <?php wp_nonce_field('sales_dashboard_permissions', 'permissions_nonce'); ?>
+                
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('User', 'sales-dashboard'); ?></th>
+                            <th><?php _e('Email', 'sales-dashboard'); ?></th>
+                            <th><?php _e('User ID', 'sales-dashboard'); ?></th>
+                            <th><?php _e('Access Level', 'sales-dashboard'); ?></th>
+                            <th><?php _e('Can See', 'sales-dashboard'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($users as $user): 
+                            $is_super_admin = get_user_meta($user->ID, '_is_super_admin', true) === '1';
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($user->display_name); ?></strong></td>
+                            <td><?php echo esc_html($user->user_email); ?></td>
+                            <td><code><?php echo $user->ID; ?></code></td>
+                            <td>
+                                <label>
+                                    <input type="checkbox" 
+                                           name="is_super_admin[<?php echo $user->ID; ?>]" 
+                                           value="1"
+                                           <?php checked($is_super_admin, true); ?>>
+                                    <strong><?php _e('Super Admin', 'sales-dashboard'); ?></strong>
+                                </label>
+                                <p class="description">
+                                    <?php _e('Check for full access, uncheck for Account Manager access', 'sales-dashboard'); ?>
+                                </p>
+                            </td>
+                            <td>
+                                <?php if ($is_super_admin): ?>
+                                    <span style="color: green;">✓ <?php _e('ALL customers and orders (including "house")', 'sales-dashboard'); ?></span>
+                                <?php else: ?>
+                                    <span style="color: orange;">⚠ <?php _e('Only customers with _account_manager_id =', 'sales-dashboard'); ?> <code><?php echo $user->ID; ?></code></span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                
+                <p class="submit">
+                    <input type="submit" 
+                           name="update_permissions" 
+                           class="button button-primary" 
+                           value="<?php _e('Save Permissions', 'sales-dashboard'); ?>">
+                </p>
+            </form>
+            
+            <div class="card" style="max-width: 800px; margin-top: 20px;">
+                <h2><?php _e('Example:', 'sales-dashboard'); ?></h2>
+                <ul>
+                    <li><?php _e('User "John Doe" with ID <code>123</code> (not Super Admin) → Can only see customers where <code>_account_manager_id = "123"</code>', 'sales-dashboard'); ?></li>
+                    <li><?php _e('User "Jane Admin" (Super Admin) → Can see ALL customers including those with <code>_account_manager_id = "house"</code>', 'sales-dashboard'); ?></li>
+                </ul>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Save user permissions
+     */
+    private function save_user_permissions() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to access this page', 'sales-dashboard'));
+        }
+        
+        // Get all users with dashboard access
+        $users = get_users(array(
+            'role__in' => array('administrator', 'shop_manager'),
+            'fields' => 'ID'
+        ));
+        
+        // Clear all permissions first
+        foreach ($users as $user_id) {
+            delete_user_meta($user_id, '_is_super_admin');
+        }
+        
+        // Set super admin permissions for checked users
+        if (isset($_POST['is_super_admin']) && is_array($_POST['is_super_admin'])) {
+            foreach ($_POST['is_super_admin'] as $user_id => $value) {
+                if ($value === '1') {
+                    update_user_meta(intval($user_id), '_is_super_admin', '1');
+                }
+            }
+        }
+        
+        // Redirect back with success message
+        wp_redirect(add_query_arg('updated', '1', admin_url('admin.php?page=sales-dashboard-permissions')));
+        exit;
     }
     
     /**

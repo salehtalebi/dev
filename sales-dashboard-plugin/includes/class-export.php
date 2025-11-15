@@ -6,6 +6,7 @@
 class Sales_Dashboard_Export {
     
     private $managers;
+    private $jwt_auth;
     
     public function __construct() {
         $this->managers = array(
@@ -18,6 +19,117 @@ class Sales_Dashboard_Export {
         );
         
         add_action('rest_api_init', array($this, 'register_routes'));
+    }
+    
+    /**
+     * Get JWT auth instance
+     */
+    private function get_jwt_auth() {
+        if (!$this->jwt_auth) {
+            $this->jwt_auth = new Sales_Dashboard_JWT_Auth();
+        }
+        return $this->jwt_auth;
+    }
+    
+    /**
+     * Get current user permissions
+     */
+    private function get_user_permissions() {
+        $jwt_auth = $this->get_jwt_auth();
+        return $jwt_auth->get_current_user_permissions();
+    }
+    
+    /**
+     * Filter orders by manager
+     * Excludes 'house' customers for non-super-admins
+     */
+    private function filter_orders_by_manager($order_ids, $manager_id) {
+        if (empty($order_ids) || empty($manager_id)) {
+            return $order_ids;
+        }
+        
+        $filtered = array();
+        
+        foreach ($order_ids as $order_id) {
+            // Check order-level manager first
+            $order_manager = get_post_meta($order_id, '_order_account_manager_id', true);
+            
+            if ($order_manager) {
+                // Skip 'house' customers
+                if ($order_manager === 'house') {
+                    continue;
+                }
+                
+                if ($order_manager === $manager_id) {
+                    $filtered[] = $order_id;
+                }
+                continue;
+            }
+            
+            // Check customer's manager
+            $order = wc_get_order($order_id);
+            if ($order) {
+                // Skip refund objects to avoid calling customer helpers on them
+                if (is_a($order, 'WC_Order_Refund') || is_a($order, '\\Automattic\\WooCommerce\\Admin\\Overrides\\OrderRefund')) {
+                    continue;
+                }
+                $customer_id = $order->get_customer_id();
+                if ($customer_id) {
+                    $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+                    
+                    // Skip 'house' customers
+                    if ($customer_manager === 'house') {
+                        continue;
+                    }
+                    
+                    if ($customer_manager === $manager_id) {
+                        $filtered[] = $order_id;
+                    }
+                }
+            }
+        }
+        
+        return $filtered;
+    }
+
+    /**
+     * Get order IDs explicitly tagged with order-level manager assignments
+     */
+    private function get_orders_with_explicit_manager($manager_id, $base_args = array()) {
+        if (empty($manager_id)) {
+            return array();
+        }
+
+        $query_args = $base_args;
+        $query_args['limit'] = -1;
+        $query_args['return'] = 'ids';
+        $query_args['type'] = 'shop_order';
+
+        if (isset($query_args['customer'])) {
+            unset($query_args['customer']);
+        }
+
+        $clause = array(
+            'key' => '_order_account_manager_id',
+            'value' => $manager_id,
+            'compare' => '='
+        );
+
+        if (isset($query_args['meta_query'])) {
+            $meta_query = $query_args['meta_query'];
+            if (!isset($meta_query['relation'])) {
+                $meta_query = array_merge(array('relation' => 'AND'), $meta_query);
+            }
+            $meta_query[] = $clause;
+            $query_args['meta_query'] = $meta_query;
+        } else {
+            $query_args['meta_query'] = array($clause);
+        }
+
+        $order_query = new WC_Order_Query($query_args);
+        $order_ids = $order_query->get_orders();
+
+        return is_array($order_ids) ? array_map('intval', $order_ids) : array();
     }
     
     public function register_routes() {
@@ -52,7 +164,17 @@ class Sales_Dashboard_Export {
             if (!class_exists('WooCommerce') || !class_exists('WC_Order_Query')) {
                 return new WP_Error('woocommerce_not_active', 'WooCommerce is not active', array('status' => 500));
             }
+            
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $user_manager_id = null;
+            
+            // If account manager, restrict to their own data
+            if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+                $user_manager_id = $permissions['account_manager_id'];
+            }
 
+            $requested_manager_id = null;
             $format = $request->get_param('format') ?: 'csv';
             // Get all orders for export (no limit)
             $limit = $request->get_param('limit') ?: -1;
@@ -65,7 +187,9 @@ class Sales_Dashboard_Export {
                 'limit' => $limit,
                 'orderby' => 'date',
                 'order' => 'DESC',
-                'status' => 'any' // Get all statuses, filter later if needed
+                'status' => 'any', // Get all statuses, filter later if needed
+                'return' => 'ids',
+                'type' => 'shop_order'
             );
             
             // Apply filters from request
@@ -73,49 +197,63 @@ class Sales_Dashboard_Export {
                 $args['status'] = $request->get_param('status');
             }
             
+            $search_term = null;
             if ($request->get_param('search') && $request->get_param('search') !== '' && $request->get_param('search') !== 'null') {
                 $search = trim($request->get_param('search'));
                 if ($search !== '' && $search !== 'null') {
                     $args['search'] = $search;
+                    $search_term = strtolower(sanitize_text_field($search));
                 }
             }
             
             // Handle account manager filter
             if ($request->get_param('accountManager') && $request->get_param('accountManager') !== '' && $request->get_param('accountManager') !== 'null') {
-                $manager_id = $request->get_param('accountManager');
+                $requested_manager_id = sanitize_text_field($request->get_param('accountManager'));
                 $customers = get_users(array(
-                    'meta_key' => 'account_manager_id',
-                    'meta_value' => $manager_id,
-                    'fields' => 'ID'
+                    'meta_key' => '_account_manager_id',
+                    'meta_value' => $requested_manager_id,
+                    'fields' => 'ID',
+                    'number' => -1
                 ));
                 
                 if (!empty($customers)) {
                     $args['customer'] = $customers;
-                } else {
-                    return new WP_Error('no_customers', 'No customers found for this account manager', array('status' => 400));
                 }
+                // If no customers are linked we still continue, order-level assignments may exist
             }
             
-            // Handle date range filters
-            if ($request->get_param('dateRange') && $request->get_param('dateRange') !== '' && $request->get_param('dateRange') !== 'null') {
-                $date_range = $request->get_param('dateRange');
-                $date_args = $this->get_date_range_args($date_range);
+            $date_from_param = $request->get_param('date_from');
+            $date_to_param = $request->get_param('date_to');
+            $has_custom_dates = ($date_from_param && $date_from_param !== '' && $date_from_param !== 'null') ||
+                                ($date_to_param && $date_to_param !== '' && $date_to_param !== 'null');
+            $date_range_param = $request->get_param('dateRange');
+
+            if ($has_custom_dates) {
+                $date_from_valid = $date_from_param && $date_from_param !== '' && $date_from_param !== 'null';
+                $date_to_valid = $date_to_param && $date_to_param !== '' && $date_to_param !== 'null';
+
+                if ($date_from_valid && $date_to_valid) {
+                    $args['date_created'] = $date_from_param . '...' . $date_to_param . ' 23:59:59';
+                } elseif ($date_from_valid) {
+                    $args['date_created'] = '>=' . $date_from_param;
+                } elseif ($date_to_valid) {
+                    $args['date_created'] = '<=' . $date_to_param . ' 23:59:59';
+                }
+            } elseif ($date_range_param && $date_range_param !== '' && $date_range_param !== 'null' && $date_range_param !== 'custom') {
+                $date_args = $this->get_date_range_args($date_range_param);
                 if ($date_args) {
                     $args = array_merge($args, $date_args);
                 }
-            } elseif ($request->get_param('date_from') || $request->get_param('date_to')) {
-                // Handle custom date range
-                $date_from = $request->get_param('date_from');
-                $date_to = $request->get_param('date_to');
-                
-                if ($date_from && $date_from !== '' && $date_from !== 'null') {
-                    $args['date_created'] = '>=' . $date_from;
-                }
-                if ($date_to && $date_to !== '' && $date_to !== 'null') {
-                    $end_date = $date_to . ' 23:59:59';
-                    $args['date_created'] = isset($args['date_created']) 
-                        ? $args['date_created'] . '...' . $end_date
-                        : '<=' . $end_date;
+            }
+
+            // Handle explicit customer filter
+            $customer_ids_filter = null;
+            if ($request->get_param('customer') && $request->get_param('customer') !== '' && $request->get_param('customer') !== 'null') {
+                $raw_customer = $request->get_param('customer');
+                $customer_values = is_array($raw_customer) ? $raw_customer : explode(',', $raw_customer);
+                $customer_ids_filter = array_filter(array_map('intval', $customer_values));
+                if (!empty($customer_ids_filter)) {
+                    $args['customer'] = $customer_ids_filter;
                 }
             }
 
@@ -135,41 +273,71 @@ class Sales_Dashboard_Export {
             // Execute query
             $order_query = new WC_Order_Query($args);
             $orders = $order_query->get_orders();
+            $order_ids = is_array($orders) ? array_map('intval', $orders) : array();
             
-            if (empty($orders)) {
+            if ($requested_manager_id) {
+                $manager_query_args = $args;
+                if (isset($manager_query_args['customer'])) {
+                    unset($manager_query_args['customer']);
+                }
+                $explicit_manager_orders = $this->get_orders_with_explicit_manager($requested_manager_id, $manager_query_args);
+                if (!empty($explicit_manager_orders)) {
+                    $order_ids = array_values(array_unique(array_merge($order_ids, $explicit_manager_orders)));
+                }
+            }
+
+            $active_manager_filter = $user_manager_id ?: $requested_manager_id;
+            
+            // Apply account manager filtering if user is not super admin
+            if ($active_manager_filter && !empty($order_ids)) {
+                $order_ids = $this->filter_orders_by_manager($order_ids, $active_manager_filter);
+            }
+            
+            if (empty($order_ids)) {
                 return new WP_Error('no_orders', 'No orders found for export', array('status' => 400));
             }
             
             $export_data = array();
+            $min_amount = $this->parse_money_param($request->get_param('min_amount'));
+            $max_amount = $this->parse_money_param($request->get_param('max_amount'));
+            $filtered_customer_ids = $customer_ids_filter ?? null;
             
-            foreach ($orders as $order) {
+            foreach ($order_ids as $order_id) {
+                $order = wc_get_order($order_id);
+                if (!$order) continue;
+                
+                // Enforce customer filter (in case WC query included guest orders etc.)
+                if (!empty($filtered_customer_ids)) {
+                    $order_customer_id = $order->get_customer_id();
+                    if (!$order_customer_id || !in_array(intval($order_customer_id), $filtered_customer_ids, true)) {
+                        continue;
+                    }
+                }
+                
                 // Apply amount filtering if needed
-                $min_amount = $request->get_param('min_amount');
-                $max_amount = $request->get_param('max_amount');
-                
-                if ($min_amount !== null && $min_amount !== '' && $min_amount !== 'null') {
-                    if (floatval($order->get_total()) < floatval($min_amount)) {
-                        continue;
-                    }
+                $order_total = floatval($order->get_total());
+                if ($min_amount !== null && $order_total < $min_amount) {
+                    continue;
                 }
-                
-                if ($max_amount !== null && $max_amount !== '' && $max_amount !== 'null') {
-                    if (floatval($order->get_total()) > floatval($max_amount)) {
-                        continue;
-                    }
+                if ($max_amount !== null && $order_total > $max_amount) {
+                    continue;
                 }
-                
+
+                if ($search_term !== null && !$this->order_matches_search_term($order, $search_term)) {
+                    continue;
+                }
+
                 $export_data[] = array(
                     'Order Number' => $order->get_order_number(),
                     'Status' => wc_get_order_status_name($order->get_status()),
-                    'Date' => $order->get_date_created()->date('Y-m-d H:i:s'),
-                    'Customer' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                    'Date' => $order->get_date_created() ? $order->get_date_created()->date('Y-m-d H:i:s') : '',
+                    'Customer' => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
                     'Email' => $order->get_billing_email(),
                     'Phone' => $order->get_billing_phone(),
-                    'Total Amount' => $order->get_total(),
+                    'Total Amount' => $order_total,
                     'Currency' => $order->get_currency(),
                     'Payment Method' => $order->get_payment_method_title(),
-                    'Address' => $order->get_billing_address_1() . ' ' . $order->get_billing_address_2(),
+                    'Address' => trim($order->get_billing_address_1() . ' ' . $order->get_billing_address_2()),
                     'City' => $order->get_billing_city(),
                     'Province' => $order->get_billing_state(),
                     'Postal Code' => $order->get_billing_postcode()
@@ -179,6 +347,7 @@ class Sales_Dashboard_Export {
             if (empty($export_data)) {
                 return new WP_Error('no_orders', 'No orders found for export', array('status' => 400));
             }
+            $export_data = $this->prepend_header_row($export_data);
             
             // Generate CSV or Excel file
             if ($format === 'csv') {
@@ -237,86 +406,84 @@ class Sales_Dashboard_Export {
      */
     public function export_customers($request) {
         try {
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $user_manager_id = null;
+            
+            // If account manager, restrict to their own customers
+            if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+                $user_manager_id = $permissions['account_manager_id'];
+            }
+            
             $format = $request->get_param('format') ?: 'csv';
             // Get all customers for export (no limit)
-            $limit = $request->get_param('limit') ?: -1;
-            if ($limit > 0) {
-                $limit = min($limit, 10000); // Max 10000 if specified
-            }
+            $limit_raw = $request->get_param('limit');
+            $limit = ($limit_raw && intval($limit_raw) > 0) ? min(intval($limit_raw), 10000) : -1;
             
-            // Build WP_User_Query arguments
+            // Build WP_User_Query arguments mirroring dashboard filters
             $args = array(
                 'number' => $limit,
-                'role' => 'customer'
+                'fields' => 'ID',
+                'orderby' => 'registered',
+                'order' => 'DESC'
             );
             
-            // Apply filters from request
-            if ($request->get_param('search') && $request->get_param('search') !== 'null') {
-                $search = trim($request->get_param('search'));
+            // Apply search filter
+            $search_param = $request->get_param('search');
+            if ($search_param && $search_param !== 'null') {
+                $search = trim($search_param);
                 if ($search !== '' && $search !== 'null') {
                     $args['search'] = '*' . esc_attr($search) . '*';
+                    $args['search_columns'] = array('user_login', 'user_email', 'user_nicename', 'display_name');
                 }
             }
             
-            // Handle account manager filter
-            if ($request->get_param('accountManager') && $request->get_param('accountManager') !== '') {
-                $manager_id = $request->get_param('accountManager');
-                $args['meta_key'] = 'account_manager_id';
-                $args['meta_value'] = $manager_id;
+            // Handle account manager + province filters via meta_query
+            $meta_query = array();
+            $requested_manager = $request->get_param('accountManager') ?: $request->get_param('account_manager');
+            if ($user_manager_id) {
+                $meta_query[] = array(
+                    'key' => '_account_manager_id',
+                    'value' => $user_manager_id,
+                    'compare' => '='
+                );
+            } elseif ($requested_manager && $requested_manager !== '' && $requested_manager !== 'null') {
+                $meta_query[] = array(
+                    'key' => '_account_manager_id',
+                    'value' => sanitize_text_field($requested_manager),
+                    'compare' => '='
+                );
             }
 
-            // Handle province filter (optimized with meta_query)
-            if ($request->get_param('province') && $request->get_param('province') !== '') {
-                $province = sanitize_text_field($request->get_param('province'));
-                
-                // If we already have a meta_key/value for account manager, convert to meta_query
-                if (isset($args['meta_key'])) {
-                    $args['meta_query'] = array(
-                        'relation' => 'AND',
-                        array(
-                            'key' => $args['meta_key'],
-                            'value' => $args['meta_value'],
-                            'compare' => '='
-                        ),
-                        array(
-                            'key' => 'billing_state',
-                            'value' => $province,
-                            'compare' => '='
-                        )
-                    );
-                    unset($args['meta_key']);
-                    unset($args['meta_value']);
-                } else {
-                    $args['meta_key'] = 'billing_state';
-                    $args['meta_value'] = $province;
-                }
+            $province_param = $request->get_param('province');
+            if ($province_param && $province_param !== '' && $province_param !== 'null') {
+                $meta_query[] = array(
+                    'key' => 'billing_state',
+                    'value' => sanitize_text_field($province_param),
+                    'compare' => '='
+                );
             }
 
-            // Handle date registered filters
-            $date_query = array();
-            
-            // Priority: custom date range over dateRange
-            $has_custom_dates = ($request->get_param('date_registered_from') && $request->get_param('date_registered_from') !== '' && $request->get_param('date_registered_from') !== 'null') ||
-                               ($request->get_param('date_from') && $request->get_param('date_from') !== '' && $request->get_param('date_from') !== 'null') ||
-                               ($request->get_param('date_registered_to') && $request->get_param('date_registered_to') !== '' && $request->get_param('date_registered_to') !== 'null') ||
-                               ($request->get_param('date_to') && $request->get_param('date_to') !== '' && $request->get_param('date_to') !== 'null');
+            if (!empty($meta_query)) {
+                $args['meta_query'] = count($meta_query) > 1
+                    ? array_merge(array('relation' => 'AND'), $meta_query)
+                    : $meta_query;
+            }
+
+            // Handle date registered filters (custom dates prioritized over presets)
+            $date_query = array('column' => 'user_registered', 'inclusive' => true);
+            $custom_from = $request->get_param('date_registered_from') ?: $request->get_param('date_from');
+            $custom_to = $request->get_param('date_registered_to') ?: $request->get_param('date_to');
+            $has_custom_dates = ($custom_from && $custom_from !== '' && $custom_from !== 'null') || ($custom_to && $custom_to !== '' && $custom_to !== 'null');
             
             if ($has_custom_dates) {
-                // Use custom date range
-                if ($request->get_param('date_registered_from') || $request->get_param('date_from')) {
-                    $date_from = $request->get_param('date_registered_from') ?: $request->get_param('date_from');
-                    if ($date_from && $date_from !== '' && $date_from !== 'null') {
-                        $date_query['after'] = $date_from;
-                    }
+                if ($custom_from && $custom_from !== '' && $custom_from !== 'null') {
+                    $date_query['after'] = $custom_from;
                 }
-                if ($request->get_param('date_registered_to') || $request->get_param('date_to')) {
-                    $date_to = $request->get_param('date_registered_to') ?: $request->get_param('date_to');
-                    if ($date_to && $date_to !== '' && $date_to !== 'null') {
-                        $date_query['before'] = $date_to . ' 23:59:59';
-                    }
+                if ($custom_to && $custom_to !== '' && $custom_to !== 'null') {
+                    $date_query['before'] = $custom_to . ' 23:59:59';
                 }
             } elseif ($request->get_param('dateRange') && $request->get_param('dateRange') !== '' && $request->get_param('dateRange') !== 'null') {
-                // Use predefined date range
                 $date_range = $request->get_param('dateRange');
                 switch ($date_range) {
                     case 'last_year':
@@ -341,34 +508,49 @@ class Sales_Dashboard_Export {
                         break;
                 }
             }
-            
-            if (!empty($date_query)) {
+
+            if (!empty($date_query['after']) || !empty($date_query['before'])) {
                 $args['date_query'] = array($date_query);
             }
             
             // Execute query
             $customer_query = new WP_User_Query($args);
-            $users = $customer_query->get_results();
+            $user_ids = $customer_query->get_results();
             
-            if (empty($users)) {
+            if (empty($user_ids)) {
                 return new WP_Error('no_customers', 'No customers found for export', array('status' => 400));
             }
             
+            $min_total_spent = $this->parse_money_param($request->get_param('total_spent_min'));
+            $max_total_spent = $this->parse_money_param($request->get_param('total_spent_max'));
             $export_data = array();
             
-            foreach ($users as $user) {
-                $customer = new WC_Customer($user->ID);
-                
-                // Get customer order stats
-                $order_count = wc_get_customer_order_count($customer->get_id());
-                $total_spent = wc_get_customer_total_spent($customer->get_id());
-                
-                // Get account manager info
-                $manager_id = get_user_meta($customer->get_id(), 'account_manager_id', true);
-                $manager_name = '';
-                if ($manager_id && isset($this->managers[$manager_id])) {
-                    $manager_name = $this->managers[$manager_id];
+            foreach ($user_ids as $user_id) {
+                $customer = new WC_Customer($user_id);
+                if (!$customer->get_id()) {
+                    continue;
                 }
+                
+                // Get stats once per customer
+                $order_count = wc_get_customer_order_count($customer->get_id());
+                $total_spent = floatval(wc_get_customer_total_spent($customer->get_id()));
+
+                if ($min_total_spent !== null && $total_spent < $min_total_spent) {
+                    continue;
+                }
+                if ($max_total_spent !== null && $total_spent > $max_total_spent) {
+                    continue;
+                }
+
+                // Ensure account managers never see house customers even if meta query misses
+                if ($user_manager_id) {
+                    $customer_manager = get_user_meta($customer->get_id(), '_account_manager_id', true);
+                    if ($customer_manager === 'house') {
+                        continue;
+                    }
+                }
+
+                $manager_label = $this->get_customer_manager_label($customer->get_id());
                 
                 $export_data[] = array(
                     'Customer ID' => $customer->get_id(),
@@ -377,27 +559,28 @@ class Sales_Dashboard_Export {
                     'Email' => $customer->get_email(),
                     'Phone' => $customer->get_billing_phone(),
                     'Company' => $customer->get_billing_company(),
-                    'Address' => $customer->get_billing_address_1() . ' ' . $customer->get_billing_address_2(),
+                    'Address' => trim($customer->get_billing_address_1() . ' ' . $customer->get_billing_address_2()),
                     'City' => $customer->get_billing_city(),
                     'Province' => $customer->get_billing_state(),
                     'Postal Code' => $customer->get_billing_postcode(),
                     'Total Orders' => $order_count,
                     'Total Spent' => $total_spent,
                     'Registration Date' => $customer->get_date_created() ? $customer->get_date_created()->date('Y-m-d H:i:s') : '',
-                    'Account Manager' => $manager_name
+                    'Account Manager' => $manager_label
                 );
             }
             
             if (empty($export_data)) {
                 return new WP_Error('no_customers', 'No customers found for export', array('status' => 400));
             }
+            $export_data = $this->prepend_header_row($export_data);
             
             // Generate CSV or Excel file
             if ($format === 'csv') {
                 return $this->generate_csv($export_data, 'customers');
-            } else {
-                return $this->generate_excel($export_data, 'customers');
             }
+            
+            return $this->generate_excel($export_data, 'customers');
             
         } catch (Exception $e) {
             error_log('Export Customers Error: ' . $e->getMessage());
@@ -406,14 +589,93 @@ class Sales_Dashboard_Export {
     }
     
     /**
+     * Resolve customer account manager label with sane fallbacks
+     */
+    private function get_customer_manager_label($customer_id) {
+        $manager_id = get_user_meta($customer_id, '_account_manager_id', true);
+        if (!$manager_id) {
+            return '';
+        }
+        if ($manager_id === 'house') {
+            return 'House';
+        }
+        if (isset($this->managers[$manager_id])) {
+            return $this->managers[$manager_id];
+        }
+        $user = get_user_by('id', $manager_id);
+        if ($user) {
+            return $user->display_name ?: $user->user_email;
+        }
+        return '';
+    }
+
+    /**
+     * Normalize numeric filters coming from request payload
+     */
+    private function parse_money_param($value) {
+        if ($value === null) {
+            return null;
+        }
+        $string_value = trim((string) $value);
+        if ($string_value === '' || strtolower($string_value) === 'null') {
+            return null;
+        }
+        return floatval($string_value);
+    }
+
+    /**
+     * Match exports to the same search logic as the dashboard table
+     */
+    private function order_matches_search_term($order, $search_term) {
+        if ($search_term === null || $search_term === '') {
+            return true;
+        }
+        $needle = strtolower($search_term);
+        $id_match = strpos((string) $order->get_id(), $needle) !== false || strpos((string) $order->get_order_number(), $needle) !== false;
+        $billing_email = strtolower((string) $order->get_billing_email());
+        $email_match = $billing_email && strpos($billing_email, $needle) !== false;
+        $name_combined = strtolower(trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()));
+        $name_match = $name_combined && strpos($name_combined, $needle) !== false;
+        return $id_match || $email_match || $name_match;
+    }
+
+    /**
+     * Prepend header row (column titles) to export data arrays
+     */
+    private function prepend_header_row($rows) {
+        if (empty($rows) || !is_array($rows)) {
+            return $rows;
+        }
+        $first_row = $rows[0];
+        if (!is_array($first_row)) {
+            return $rows;
+        }
+        $headers = array_keys($first_row);
+        array_unshift($rows, $headers);
+        return $rows;
+    }
+    
+    /**
      * Export analytics report
      */
     public function export_analytics($request) {
         global $wpdb;
         
+        // Get user permissions
+        $permissions = $this->get_user_permissions();
+        $user_manager_id = null;
+        
+        // If account manager, restrict to their own data
+        if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+            $user_manager_id = $permissions['account_manager_id'];
+        }
+        
         $format = $request->get_param('format') ?: 'csv';
         $period = $request->get_param('period') ?: 'month';
-        $manager_id = $request->get_param('manager_id');
+        $requested_manager = $request->get_param('manager_id');
+        
+        // Determine which manager to filter by
+        $manager_id = $user_manager_id ?: $requested_manager;
         
         $customer_filter = '';
         if ($manager_id) {

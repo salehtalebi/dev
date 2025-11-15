@@ -6,6 +6,7 @@
 class Sales_Dashboard_API_Routes {
     
     private $managers;
+    private $jwt_auth;
     
     public function __construct() {
         $this->managers = array(
@@ -18,6 +19,159 @@ class Sales_Dashboard_API_Routes {
         );
         
         add_action('rest_api_init', array($this, 'register_routes'));
+    }
+    
+    /**
+     * Get JWT auth instance
+     */
+    private function get_jwt_auth() {
+        if (!$this->jwt_auth) {
+            $this->jwt_auth = new Sales_Dashboard_JWT_Auth();
+        }
+        return $this->jwt_auth;
+    }
+    
+    /**
+     * Get current user permissions
+     */
+    private function get_user_permissions() {
+        $jwt_auth = $this->get_jwt_auth();
+        return $jwt_auth->get_current_user_permissions();
+    }
+    
+    /**
+     * Determine if the given order belongs to the provided manager
+     */
+    private function order_belongs_to_manager($order_id, $manager_id, $order = null) {
+        if (empty($order_id) || empty($manager_id)) {
+            return false;
+        }
+
+        $manager_id = trim((string) $manager_id);
+
+        $order_manager = get_post_meta($order_id, '_order_account_manager_id', true);
+        if (!empty($order_manager)) {
+            $order_manager = trim((string) $order_manager);
+
+            if ($order_manager === 'house') {
+                return false;
+            }
+
+            return $order_manager === $manager_id;
+        }
+
+        if (!$order) {
+            $order = wc_get_order($order_id);
+        }
+
+        if (!$order) {
+            return false;
+        }
+
+        $customer_id = $order->get_customer_id();
+        if ($customer_id) {
+            $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+            if (!empty($customer_manager)) {
+                $customer_manager = trim((string) $customer_manager);
+
+                if ($customer_manager === 'house') {
+                    return false;
+                }
+
+                if ($customer_manager === $manager_id) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Filter orders by manager - checks order meta first, then customer meta
+     * Also excludes 'house' customers for non-super-admins
+     */
+    private function filter_orders_by_manager($order_ids, $manager_id) {
+        if (empty($order_ids) || empty($manager_id)) {
+            return $order_ids;
+        }
+        
+        $filtered = array();
+        
+        foreach ($order_ids as $order_id) {
+            if ($this->order_belongs_to_manager($order_id, $manager_id)) {
+                $filtered[] = $order_id;
+            }
+        }
+        
+        return $filtered;
+    }
+
+    /**
+     * Get order IDs that explicitly reference an order-level account manager assignment
+     */
+    private function get_orders_with_explicit_manager($manager_id, $base_args = array()) {
+        if (empty($manager_id)) {
+            return array();
+        }
+
+        $query_args = $base_args;
+        $query_args['limit'] = -1;
+        $query_args['return'] = 'ids';
+        $query_args['type'] = 'shop_order';
+
+        if (isset($query_args['customer'])) {
+            unset($query_args['customer']);
+        }
+
+        $clause = array(
+            'key' => '_order_account_manager_id',
+            'value' => $manager_id,
+            'compare' => '='
+        );
+
+        if (isset($query_args['meta_query'])) {
+            $meta_query = $query_args['meta_query'];
+            if (!isset($meta_query['relation'])) {
+                $meta_query = array_merge(array('relation' => 'AND'), $meta_query);
+            }
+            $meta_query[] = $clause;
+            $query_args['meta_query'] = $meta_query;
+        } else {
+            $query_args['meta_query'] = array($clause);
+        }
+
+        $order_query = new WC_Order_Query($query_args);
+        $order_ids = $order_query->get_orders();
+
+        return is_array($order_ids) ? array_map('intval', $order_ids) : array();
+    }
+    
+    /**
+     * Filter customers by manager
+     * Excludes 'house' customers for non-super-admins
+     */
+    private function filter_customers_by_manager($customer_ids, $manager_id) {
+        if (empty($customer_ids) || empty($manager_id)) {
+            return $customer_ids;
+        }
+        
+        $filtered = array();
+        
+        foreach ($customer_ids as $customer_id) {
+            $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+            
+            // Skip 'house' customers for account managers
+            if ($customer_manager === 'house') {
+                continue;
+            }
+            
+            if ($customer_manager === $manager_id) {
+                $filtered[] = $customer_id;
+            }
+        }
+        
+        return $filtered;
     }
     
     public function register_routes() {
@@ -303,7 +457,7 @@ class Sales_Dashboard_API_Routes {
             }
             
             $orders_args = array(
-                'status' => array('wc-completed', 'wc-processing'),
+                'status' => array('completed', 'processing'),
                 'date_created' => $date_range['after'] . '...' . $date_range['before'],
                 'limit' => -1,
                 'return' => 'objects'
@@ -361,7 +515,7 @@ class Sales_Dashboard_API_Routes {
             $twelve_months_ago = date('Y-m-d', strtotime('-12 months'));
             $orders = wc_get_orders(array(
                 'customer_id' => $customer_id,
-                'status' => array('wc-completed', 'wc-processing'),
+                'status' => array('completed', 'processing'),
                 'date_created' => $twelve_months_ago . '...' . date('Y-m-d'),
                 'limit' => -1,
                 'return' => 'objects'
@@ -424,6 +578,22 @@ class Sales_Dashboard_API_Routes {
             if (!class_exists('WooCommerce') || !class_exists('WC_Order_Query')) {
                 return new WP_Error('woocommerce_not_active', 'WooCommerce is not active', array('status' => 500));
             }
+            
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $user_manager_id = null;
+            
+            // If account manager (not super admin), restrict to their own data
+            if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+                $user_manager_id = $permissions['account_manager_id'];
+            }
+
+            $requested_manager_filter = null;
+            if (!$user_manager_id && $request->get_param('account_manager')) {
+                $requested_manager_filter = sanitize_text_field($request->get_param('account_manager'));
+            }
+
+            $active_manager_filter = $user_manager_id ?: $requested_manager_filter;
 
             $args = array(
                 'limit' => min($request->get_param('per_page') ?: 20, 100),
@@ -469,29 +639,18 @@ class Sales_Dashboard_API_Routes {
                 }
             }
             
-            // Handle account manager filter
-            if ($request->get_param('account_manager')) {
-                $manager_id = sanitize_text_field($request->get_param('account_manager'));
-                
-                // Get users assigned to this manager
+            // Handle account manager filter (super admins only)
+            if ($requested_manager_filter) {
                 $customers = get_users(array(
                     'meta_key' => '_account_manager_id',
-                    'meta_value' => $manager_id,
+                    'meta_value' => $requested_manager_filter,
                     'fields' => 'ID'
                 ));
-                
+
                 if (!empty($customers)) {
                     $args['customer'] = $customers;
-                } else {
-                    // No customers for this manager, return empty result
-                    return array(
-                        'data' => array(),
-                        'total' => 0,
-                        'page' => intval($request->get_param('page') ?: 1),
-                        'per_page' => intval($request->get_param('per_page') ?: 20),
-                        'pages' => 0
-                    );
                 }
+                // If no customers are linked, we fall back to order-level assignments later
             }
             
             // Province filter flag and value (we'll apply manually for consistency across HPOS/legacy)
@@ -544,6 +703,20 @@ class Sales_Dashboard_API_Routes {
             $count_query = new WC_Order_Query($count_args);
             $count_ids = $count_query->get_orders();
 
+            if ($requested_manager_filter) {
+                $order_manager_args = $count_args;
+                if (isset($order_manager_args['customer'])) {
+                    unset($order_manager_args['customer']);
+                }
+                $order_level_ids = $this->get_orders_with_explicit_manager($requested_manager_filter, $order_manager_args);
+                if (!empty($order_level_ids)) {
+                    if (!is_array($count_ids)) {
+                        $count_ids = array();
+                    }
+                    $count_ids = array_values(array_unique(array_merge($count_ids, $order_level_ids)));
+                }
+            }
+
             // Collect filters that require manual evaluation (amount, province)
             $min_amount = $request->get_param('min_amount');
             $max_amount = $request->get_param('max_amount');
@@ -579,11 +752,66 @@ class Sales_Dashboard_API_Routes {
             }
 
             $total_orders = is_array($count_ids) ? count($count_ids) : intval($count_ids);
+            $manual_order_ids = array();
+            $use_manual_loading = false;
+            $search_pool_limit = 1000;
             
-            // Adjust query limit if amount filter is present (need to get more orders to filter)
-            if ($needs_manual_filtering) {
+            // Apply account manager filtering if needed
+            if ($active_manager_filter && is_array($count_ids)) {
+                $count_ids = $this->filter_orders_by_manager($count_ids, $active_manager_filter);
+                $total_orders = count($count_ids);
+            }
+            
+            // If manager scope has no orders, return empty result
+            if ($active_manager_filter && (empty($count_ids) || $total_orders === 0)) {
+                return array(
+                    'data' => array(),
+                    'total' => 0,
+                    'page' => intval($request->get_param('page') ?: 1),
+                    'per_page' => intval($request->get_param('per_page') ?: 20),
+                    'pages' => 0
+                );
+            }
+            
+            // Check if search is present (requires post-query filtering)
+            $has_search = $request->get_param('search');
+            
+            $page_ids = array();
+
+            // For manager-scoped views, ALWAYS use the filtered IDs (count_ids)
+            if ($active_manager_filter && is_array($count_ids)) {
+                // Manager views must work with filtered IDs only
+                if ($has_search) {
+                    // Build a bounded pool for search (matches prior 1000 limit)
+                    $manual_order_ids = array_map('intval', $count_ids);
+                    if (count($manual_order_ids) > $search_pool_limit) {
+                        $manual_order_ids = array_slice($manual_order_ids, 0, $search_pool_limit);
+                    }
+                    $use_manual_loading = true;
+                } else {
+                    // Normal pagination with filtered IDs
+                    $requested_per_page = intval($request->get_param('per_page') ?: 20);
+                    $current_page = intval($request->get_param('page') ?: 1);
+                    $start = ($current_page - 1) * $requested_per_page;
+                    $page_ids = array_slice($count_ids, $start, $requested_per_page);
+                    
+                    if (!empty($page_ids)) {
+                        $manual_order_ids = array_map('intval', $page_ids);
+                        $use_manual_loading = true;
+                    } else {
+                        // No orders for this page
+                        return array(
+                            'data' => array(),
+                            'total' => $total_orders,
+                            'page' => $current_page,
+                            'per_page' => $requested_per_page,
+                            'pages' => ceil($total_orders / $requested_per_page)
+                        );
+                    }
+                }
+            } elseif ($needs_manual_filtering) {
+                // Super admin with manual filtering (amount, province)
                 // Get more orders than needed to account for post-filtering
-                // For amount filtering, we need to get all filtered IDs and slice them
                 // Use the count_ids we already have (which includes amount filter)
                 if (is_array($count_ids) && count($count_ids) > 0) {
                     $requested_per_page = intval($request->get_param('per_page') ?: 20);
@@ -612,30 +840,37 @@ class Sales_Dashboard_API_Routes {
                     }
                 }
             } else {
-                // No amount filter, use normal pagination
-                $args['limit'] = min($args['limit'], 100); // Max 100 orders per page
+                // Super admin without manual filtering - use normal WC query pagination
+                if ($has_search) {
+                    // Get more orders for searching when no amount filter
+                    $args['limit'] = 1000;
+                    unset($args['page']); // Don't use built-in pagination for search
+                } else {
+                    // Normal pagination
+                    $args['limit'] = min($args['limit'], 100); // Max 100 orders per page
+                }
+            }
+            
+            if ($use_manual_loading && !empty($manual_order_ids)) {
+                // Manually load orders when we already determined the exact ID pool
+                $orders = array();
+                foreach ($manual_order_ids as $order_id) {
+                    $order = wc_get_order($order_id);
+                    if ($order) {
+                        $orders[] = $order;
+                    }
+                }
+            } else {
+                $order_query = new WC_Order_Query($args);
+                $orders = $order_query->get_orders();
             }
 
-            // Check if search is present (requires post-query filtering)
-            $has_search = $request->get_param('search');
-            
-            // If search is present and we have amount filter, we need to get all filtered IDs
-            if ($has_search && $has_amount_filter && is_array($count_ids)) {
-                // Get all filtered orders (not just current page) for searching
-                unset($args['include']);
-                unset($args['limit']);
-                unset($args['page']);
-                $args['include'] = $count_ids;
-                $args['orderby'] = 'date';
-                $args['order'] = 'DESC';
-            } elseif ($has_search && !$needs_manual_filtering) {
-                // Get more orders for searching when no amount filter
-                $args['limit'] = 1000;
-                unset($args['page']); // Don't use built-in pagination for search
+            // Safety net: ensure filtered manager views never leak unauthorized orders
+            if ($active_manager_filter && !empty($orders)) {
+                $orders = array_values(array_filter($orders, function($order) use ($active_manager_filter) {
+                    return $this->order_belongs_to_manager($order->get_id(), $active_manager_filter, $order);
+                }));
             }
-            
-            $order_query = new WC_Order_Query($args);
-            $orders = $order_query->get_orders();
 
             // Enhanced post-filter search (email, name, id) if search supplied
             if ($has_search) {
@@ -665,7 +900,10 @@ class Sales_Dashboard_API_Routes {
             }
             
             // Clear memory
-            unset($orders, $order_query, $count_query);
+            unset($orders, $count_query);
+            if (isset($order_query)) {
+                unset($order_query);
+            }
             if (function_exists('gc_collect_cycles')) {
                 gc_collect_cycles();
             }
@@ -717,6 +955,15 @@ class Sales_Dashboard_API_Routes {
      * Get enhanced customers (with additional data)
      */
     public function get_enhanced_customers($request) {
+        // Get user permissions
+        $permissions = $this->get_user_permissions();
+        $user_manager_id = null;
+        
+        // If account manager (not super admin), restrict to their own customers
+        if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+            $user_manager_id = $permissions['account_manager_id'];
+        }
+        
         $per_page = intval($request->get_param('per_page') ?: 20);
         $page = intval($request->get_param('page') ?: 1);
 
@@ -735,10 +982,19 @@ class Sales_Dashboard_API_Routes {
         }
 
         // Handle account manager filter for customers
-        if ($request->get_param('account_manager')) {
-            $manager_id = sanitize_text_field($request->get_param('account_manager'));
+        $requested_manager = $request->get_param('account_manager');
+        
+        // If user is account manager, force filter by their ID (ignore request param)
+        if ($user_manager_id) {
+            $args['meta_key'] = '_account_manager_id';
+            $args['meta_value'] = $user_manager_id;
+            $args['meta_compare'] = '=';
+        } elseif ($requested_manager) {
+            // Super admin can filter by requested manager
+            $manager_id = sanitize_text_field($requested_manager);
             $args['meta_key'] = '_account_manager_id';
             $args['meta_value'] = $manager_id;
+            $args['meta_compare'] = '=';
         }
 
         // Handle province filter with meta_query (pre-query filtering)
@@ -827,6 +1083,21 @@ class Sales_Dashboard_API_Routes {
             return new WP_Error('customer_not_found', 'مشتری یافت نشد', array('status' => 404));
         }
         
+        // Check permission - account managers can only see their own customers
+        $permissions = $this->get_user_permissions();
+        if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+            $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+            
+            // Exclude 'house' customers for account managers
+            if ($customer_manager === 'house') {
+                return new WP_Error('forbidden', 'شما اجازه دسترسی به این مشتری را ندارید', array('status' => 403));
+            }
+            
+            if ($customer_manager !== $permissions['account_manager_id']) {
+                return new WP_Error('forbidden', 'شما اجازه دسترسی به این مشتری را ندارید', array('status' => 403));
+            }
+        }
+        
         $customer_data = $this->format_customer_data($customer);
         
         // Add account manager info
@@ -844,6 +1115,43 @@ class Sales_Dashboard_API_Routes {
         
         if (!$order) {
             return new WP_Error('order_not_found', 'Order not found', array('status' => 404));
+        }
+        
+        // Check permission - account managers can only see their own orders
+        $permissions = $this->get_user_permissions();
+        if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+            $has_access = false;
+            
+            // Check order-level manager first
+            $order_manager = get_post_meta($order_id, '_order_account_manager_id', true);
+            
+            // Exclude 'house' customers for account managers
+            if ($order_manager === 'house') {
+                return new WP_Error('forbidden', 'شما اجازه دسترسی به این سفارش را ندارید', array('status' => 403));
+            }
+            
+            if ($order_manager === $permissions['account_manager_id']) {
+                $has_access = true;
+            } else {
+                // Check customer's manager
+                $customer_id = $order->get_customer_id();
+                if ($customer_id) {
+                    $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+                    
+                    // Exclude 'house' customers for account managers
+                    if ($customer_manager === 'house') {
+                        return new WP_Error('forbidden', 'شما اجازه دسترسی به این سفارش را ندارید', array('status' => 403));
+                    }
+                    
+                    if ($customer_manager === $permissions['account_manager_id']) {
+                        $has_access = true;
+                    }
+                }
+            }
+            
+            if (!$has_access) {
+                return new WP_Error('forbidden', 'شما اجازه دسترسی به این سفارش را ندارید', array('status' => 403));
+            }
         }
         
         $order_data = $this->format_order_data($order);
@@ -897,13 +1205,50 @@ class Sales_Dashboard_API_Routes {
             return new WP_Error('order_not_found', 'سفارش یافت نشد', array('status' => 404));
         }
         
+        // Check permission - account managers can only update their own orders
+        $permissions = $this->get_user_permissions();
+        if (!$permissions['is_super_admin'] && $permissions['account_manager_id']) {
+            $has_access = false;
+            
+            // Check order-level manager first
+            $order_manager = get_post_meta($order_id, '_order_account_manager_id', true);
+            
+            // Exclude 'house' customers for account managers
+            if ($order_manager === 'house') {
+                return new WP_Error('forbidden', 'شما اجازه ویرایش این سفارش را ندارید', array('status' => 403));
+            }
+            
+            if ($order_manager === $permissions['account_manager_id']) {
+                $has_access = true;
+            } else {
+                // Check customer's manager
+                $customer_id = $order->get_customer_id();
+                if ($customer_id) {
+                    $customer_manager = get_user_meta($customer_id, '_account_manager_id', true);
+                    
+                    // Exclude 'house' customers for account managers
+                    if ($customer_manager === 'house') {
+                        return new WP_Error('forbidden', 'شما اجازه ویرایش این سفارش را ندارید', array('status' => 403));
+                    }
+                    
+                    if ($customer_manager === $permissions['account_manager_id']) {
+                        $has_access = true;
+                    }
+                }
+            }
+            
+            if (!$has_access) {
+                return new WP_Error('forbidden', 'شما اجازه ویرایش این سفارش را ندارید', array('status' => 403));
+            }
+        }
+        
         // Validate status
         $valid_statuses = array_keys(wc_get_order_statuses());
         if (!in_array('wc-' . $new_status, $valid_statuses) && !in_array($new_status, $valid_statuses)) {
             return new WP_Error('invalid_status', 'Invalid status', array('status' => 400));
         }
         
-    $order->update_status($new_status, 'Status changed by Sales Dashboard');
+        $order->update_status($new_status, 'Status changed by Sales Dashboard');
         
         return array(
             'success' => true,

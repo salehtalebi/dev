@@ -394,6 +394,8 @@ class Sales_Dashboard_JWT_Auth {
      */
     private function prepare_user_data($user) {
         $user_data = get_userdata($user->ID);
+        $is_super_admin = $this->is_super_admin($user->ID);
+        $account_manager_id = $this->get_user_account_manager_id($user->ID);
         
         return array(
             'id' => $user->ID,
@@ -403,8 +405,69 @@ class Sales_Dashboard_JWT_Auth {
             'last_name' => $user_data->last_name,
             'display_name' => $user_data->display_name,
             'roles' => $user_data->roles,
-            'is_account_manager' => get_user_meta($user->ID, 'is_account_manager', true) === '1',
+            'is_super_admin' => $is_super_admin,
+            'is_account_manager' => !$is_super_admin && !empty($account_manager_id),
+            'account_manager_id' => $account_manager_id,
             'avatar_url' => get_avatar_url($user->ID)
+        );
+    }
+    
+    /**
+     * Check if user is a super admin (has full access to all data)
+     * Super admins are identified by a user meta key
+     * 
+     * @param int $user_id User ID
+     * @return bool True if user is super admin
+     */
+    public function is_super_admin($user_id = null) {
+        if ($user_id === null) {
+            $user_id = get_current_user_id();
+        }
+        
+        if (!$user_id) {
+            return false;
+        }
+        
+        // Check if user has super admin meta flag
+        $is_super_admin = get_user_meta($user_id, '_is_super_admin', true);
+        
+        return $is_super_admin === '1' || $is_super_admin === 1 || $is_super_admin === true;
+    }
+    
+    /**
+     * Get account manager ID for a user
+     * Returns the WordPress user ID as the manager ID
+     */
+    public function get_user_account_manager_id($user_id) {
+        // The manager ID is simply the WordPress user ID
+        // Only users with specific roles can be managers
+        $user = get_user_by('id', $user_id);
+        
+        if (!$user) {
+            return false;
+        }
+        
+        // Only admin or shop_manager can be account managers
+        if (in_array('administrator', $user->roles) || in_array('shop_manager', $user->roles)) {
+            return (string) $user_id; // Return as string for consistency
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Check if current user should see only their own data (account manager)
+     * or all data (super admin)
+     * 
+     * @return array Array with 'is_super_admin' and 'account_manager_id' keys
+     */
+    public function get_current_user_permissions() {
+        $user_id = get_current_user_id();
+        
+        return array(
+            'user_id' => $user_id,
+            'is_super_admin' => $this->is_super_admin($user_id),
+            'account_manager_id' => $this->get_user_account_manager_id($user_id)
         );
     }
 }

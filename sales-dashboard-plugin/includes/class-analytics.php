@@ -6,6 +6,7 @@
 class Sales_Dashboard_Analytics {
     
     private $managers;
+    private $jwt_auth;
     
     public function __construct() {
         $this->managers = array(
@@ -18,6 +19,129 @@ class Sales_Dashboard_Analytics {
         );
         
         add_action('rest_api_init', array($this, 'register_routes'));
+    }
+    
+    /**
+     * Get JWT Auth instance for permission checks
+     */
+    private function get_jwt_auth() {
+        if (!$this->jwt_auth) {
+            $this->jwt_auth = new Sales_Dashboard_JWT_Auth();
+        }
+        return $this->jwt_auth;
+    }
+    
+    /**
+     * Get current user permissions
+     * Returns array with is_super_admin and account_manager_id
+     */
+    private function get_user_permissions() {
+        return $this->get_jwt_auth()->get_current_user_permissions();
+    }
+    
+    /**
+     * Filter order IDs based on account manager permissions
+     * For account managers, only return orders assigned to them
+     * 
+     * @param array $order_ids Array of order IDs to filter
+     * @param string $manager_id Account manager ID (if null, uses current user's ID)
+     * @return array Filtered order IDs
+     */
+    private function filter_orders_by_manager($order_ids, $manager_id = null) {
+        $permissions = $this->get_user_permissions();
+        
+        // Super admins see everything
+        if ($permissions['is_super_admin']) {
+            return $order_ids;
+        }
+        
+        // Use provided manager_id or current user's manager_id
+        $filter_manager_id = $manager_id ?: $permissions['account_manager_id'];
+        
+        // If no manager ID, return empty (shouldn't happen for account managers)
+        if (!$filter_manager_id) {
+            return array();
+        }
+        
+        $filtered_ids = array();
+        
+        foreach ($order_ids as $order_id) {
+            $order = wc_get_order($order_id);
+            if (!$order) continue;
+            
+            // Check order-specific manager first
+            $order_manager_id = get_post_meta($order_id, '_order_account_manager_id', true);
+            
+            if ($order_manager_id) {
+                // Skip 'house' for account managers
+                if ($order_manager_id === 'house') {
+                    continue;
+                }
+                
+                // Order has specific manager assigned
+                if ($order_manager_id === $filter_manager_id) {
+                    $filtered_ids[] = $order_id;
+                }
+            } else {
+                // Fall back to customer's account manager
+                $customer_id = $order->get_customer_id();
+                if ($customer_id) {
+                    $customer_manager_id = get_user_meta($customer_id, '_account_manager_id', true);
+                    
+                    // Skip 'house' for account managers
+                    if ($customer_manager_id === 'house') {
+                        continue;
+                    }
+                    
+                    if ($customer_manager_id === $filter_manager_id) {
+                        $filtered_ids[] = $order_id;
+                    }
+                }
+            }
+        }
+        
+        return $filtered_ids;
+    }
+    
+    /**
+     * Filter customer IDs based on account manager permissions
+     * 
+     * @param array $customer_ids Array of customer IDs to filter
+     * @param string $manager_id Account manager ID (if null, uses current user's ID)
+     * @return array Filtered customer IDs
+     */
+    private function filter_customers_by_manager($customer_ids, $manager_id = null) {
+        $permissions = $this->get_user_permissions();
+        
+        // Super admins see everything
+        if ($permissions['is_super_admin']) {
+            return $customer_ids;
+        }
+        
+        // Use provided manager_id or current user's manager_id
+        $filter_manager_id = $manager_id ?: $permissions['account_manager_id'];
+        
+        // If no manager ID, return empty
+        if (!$filter_manager_id) {
+            return array();
+        }
+        
+        $filtered_ids = array();
+        
+        foreach ($customer_ids as $customer_id) {
+            $customer_manager_id = get_user_meta($customer_id, '_account_manager_id', true);
+            
+            // Skip 'house' customers for account managers
+            if ($customer_manager_id === 'house') {
+                continue;
+            }
+            
+            if ($customer_manager_id === $filter_manager_id) {
+                $filtered_ids[] = $customer_id;
+            }
+        }
+        
+        return $filtered_ids;
     }
     
     public function register_routes() {
@@ -86,6 +210,14 @@ class Sales_Dashboard_Analytics {
             $period = $request->get_param('period') ?: 'month';
             $manager_id = $request->get_param('manager_id');
             
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            
+            // If account manager and no specific manager_id requested, use their own ID
+            if (!$permissions['is_super_admin'] && !$manager_id) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
             // Simple stats without complex queries first
             $current_month_start = date('Y-m-01 00:00:00');
             $current_month_end = date('Y-m-t 23:59:59');
@@ -95,17 +227,26 @@ class Sales_Dashboard_Analytics {
                 'status' => array('wc-completed', 'wc-processing'),
                 'date_created' => $current_month_start . '...' . $current_month_end,
                 'limit' => 1000, // Limit to avoid memory exhaustion
-                'return' => 'objects'
+                'return' => 'ids'
             ));
+            
+            // Filter orders by manager if applicable
+            if ($manager_id || !$permissions['is_super_admin']) {
+                $current_orders = $this->filter_orders_by_manager($current_orders, $manager_id);
+            }
             
             $total_orders = count($current_orders);
             $total_revenue = 0;
             $customer_ids = array();
             
-            foreach ($current_orders as $order) {
-                $total_revenue += $order->get_total();
-                if ($order->get_customer_id() > 0) {
-                    $customer_ids[] = $order->get_customer_id();
+            // Load full order objects only for filtered IDs
+            foreach ($current_orders as $order_id) {
+                $order = wc_get_order($order_id);
+                if ($order) {
+                    $total_revenue += $order->get_total();
+                    if ($order->get_customer_id() > 0) {
+                        $customer_ids[] = $order->get_customer_id();
+                    }
                 }
             }
             
@@ -120,12 +261,20 @@ class Sales_Dashboard_Analytics {
                 'status' => array('wc-completed', 'wc-processing'),
                 'date_created' => $prev_month_start . '...' . $prev_month_end,
                 'limit' => 1000, // Also limit previous month
-                'return' => 'objects'
+                'return' => 'ids'
             ));
             
+            // Filter previous month orders by manager if applicable
+            if ($manager_id || !$permissions['is_super_admin']) {
+                $prev_orders = $this->filter_orders_by_manager($prev_orders, $manager_id);
+            }
+            
             $prev_revenue = 0;
-            foreach ($prev_orders as $order) {
-                $prev_revenue += $order->get_total();
+            foreach ($prev_orders as $order_id) {
+                $order = wc_get_order($order_id);
+                if ($order) {
+                    $prev_revenue += $order->get_total();
+                }
             }
             
             $growth_percentage = $prev_revenue > 0 ? 
@@ -167,6 +316,14 @@ class Sales_Dashboard_Analytics {
             $manager_id = $request->get_param('manager_id');
             $months_count = min($request->get_param('months') ?: 12, 24);
             
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            
+            // If account manager and no specific manager_id requested, use their own ID
+            if (!$permissions['is_super_admin'] && !$manager_id) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
             // Get date range
             $start_date = date('Y-m-01', strtotime("-{$months_count} months"));
             $end_date = date('Y-m-t');
@@ -175,22 +332,21 @@ class Sales_Dashboard_Analytics {
                 'status' => array('wc-completed', 'wc-processing'),
                 'date_created' => $start_date . '...' . $end_date,
                 'limit' => -1,
-                'return' => 'objects'
+                'return' => 'ids'
             ));
+            
+            // Filter orders by manager if applicable
+            if ($manager_id || !$permissions['is_super_admin']) {
+                $orders = $this->filter_orders_by_manager($orders, $manager_id);
+            }
             
             $monthly_data = array();
             
-            foreach ($orders as $order) {
-                $month = $order->get_date_created()->format('Y-m');
+            foreach ($orders as $order_id) {
+                $order = wc_get_order($order_id);
+                if (!$order) continue;
                 
-                // Skip if manager filter is set and customer is not assigned
-                if ($manager_id) {
-                    $customer_id = $order->get_customer_id();
-                    if (!$customer_id) continue;
-                    
-                    $customer_manager = get_user_meta($customer_id, 'account_manager_id', true);
-                    if ($customer_manager != $manager_id) continue;
-                }
+                $month = $order->get_date_created()->format('Y-m');
                 
                 if (!isset($monthly_data[$month])) {
                     $monthly_data[$month] = array(
@@ -246,6 +402,14 @@ class Sales_Dashboard_Analytics {
             $period = $request->get_param('period') ?: 'month';
             $manager_id = $request->get_param('manager_id');
             
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            
+            // If account manager and no specific manager_id requested, use their own ID
+            if (!$permissions['is_super_admin'] && !$manager_id) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
             // Get date range
             $month_start = date('Y-m-01 00:00:00');
             $month_end = date('Y-m-t 23:59:59');
@@ -254,22 +418,21 @@ class Sales_Dashboard_Analytics {
                 'status' => 'any',
                 'date_created' => $month_start . '...' . $month_end,
                 'limit' => -1,
-                'return' => 'objects'
+                'return' => 'ids'
             ));
+            
+            // Filter orders by manager if applicable
+            if ($manager_id || !$permissions['is_super_admin']) {
+                $orders = $this->filter_orders_by_manager($orders, $manager_id);
+            }
             
             $sales_by_status = array();
             $top_customers = array();
             $daily_sales = array();
             
-            foreach ($orders as $order) {
-                // Skip if manager filter is set and customer is not assigned
-                if ($manager_id) {
-                    $customer_id = $order->get_customer_id();
-                    if ($customer_id) {
-                        $customer_manager = get_user_meta($customer_id, 'account_manager_id', true);
-                        if ($customer_manager != $manager_id) continue;
-                    }
-                }
+            foreach ($orders as $order_id) {
+                $order = wc_get_order($order_id);
+                if (!$order) continue;
                 
                 $status = $order->get_status();
                 $date = $order->get_date_created()->format('Y-m-d');
@@ -367,7 +530,16 @@ class Sales_Dashboard_Analytics {
             $filter_value = $request->get_param('filterValue') ?: $request->get_param('filter_value');
             $limit = min($request->get_param('limit') ?: 10, 50);
             
-            error_log("Top Products - filter_type: {$filter_type}, filter_value: {$filter_value}");
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $manager_id = null;
+            
+            // If account manager, use their own ID
+            if (!$permissions['is_super_admin']) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
+            error_log("Top Products - filter_type: {$filter_type}, filter_value: {$filter_value}, manager_id: {$manager_id}");
             
             // Calculate date range for period
             $date_range = $this->calculate_simple_date_range($filter_type, $filter_value);
@@ -376,7 +548,8 @@ class Sales_Dashboard_Analytics {
             $products = $this->get_top_products_for_period(
                 $date_range['start'],
                 $date_range['end'],
-                $limit
+                $limit,
+                $manager_id
             );
             
             $response = array(
@@ -400,74 +573,126 @@ class Sales_Dashboard_Analytics {
     /**
      * Get top products for a specific period
      */
-    private function get_top_products_for_period($start_date, $end_date, $limit = 10) {
+    private function get_top_products_for_period($start_date, $end_date, $limit = 10, $manager_id = null) {
         global $wpdb;
         
         $product_stats = array();
         
-        // Check if HPOS is enabled
-        $hpos_enabled = class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
-                       method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
-                       \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
-        
-        if ($hpos_enabled) {
-            // HPOS Query
-            $query = $wpdb->prepare("
-                SELECT 
-                    oitemmeta_product.meta_value as product_id,
-                    SUM(oitemmeta_qty.meta_value) as total_quantity,
-                    SUM(oitemmeta_total.meta_value) as total_revenue,
-                    COUNT(DISTINCT o.id) as orders_count
-                FROM {$wpdb->prefix}wc_orders o
-                INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON o.id = oi.order_id
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
-                    ON oi.order_item_id = oitemmeta_product.order_item_id 
-                    AND oitemmeta_product.meta_key = '_product_id'
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
-                    ON oi.order_item_id = oitemmeta_qty.order_item_id 
-                    AND oitemmeta_qty.meta_key = '_qty'
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
-                    ON oi.order_item_id = oitemmeta_total.order_item_id 
-                    AND oitemmeta_total.meta_key = '_line_total'
-                WHERE o.status IN ('wc-completed', 'wc-processing')
-                    AND o.date_created_gmt >= %s
-                    AND o.date_created_gmt < %s
-                    AND oi.order_item_type = 'line_item'
-                GROUP BY product_id
-                ORDER BY total_revenue DESC
-                LIMIT %d
-            ", $start_date, $end_date, $limit);
+        // If manager filter is active, get orders first and filter them
+        if ($manager_id) {
+            $orders = wc_get_orders(array(
+                'status' => array('wc-completed', 'wc-processing'),
+                'date_created' => $start_date . '...' . $end_date,
+                'limit' => -1,
+                'return' => 'ids'
+            ));
+            
+            // Filter orders by manager
+            $filtered_orders = $this->filter_orders_by_manager($orders, $manager_id);
+            
+            // If no orders, return empty
+            if (empty($filtered_orders)) {
+                return array();
+            }
+            
+            // Get product stats from filtered orders
+            $product_stats_map = array();
+            foreach ($filtered_orders as $order_id) {
+                $order = wc_get_order($order_id);
+                if (!$order) continue;
+                
+                foreach ($order->get_items() as $item) {
+                    $product_id = $item->get_product_id();
+                    if (!$product_id) continue;
+                    
+                    if (!isset($product_stats_map[$product_id])) {
+                        $product_stats_map[$product_id] = array(
+                            'product_id' => $product_id,
+                            'total_quantity' => 0,
+                            'total_revenue' => 0,
+                            'orders_count' => 0
+                        );
+                    }
+                    
+                    $product_stats_map[$product_id]['total_quantity'] += $item->get_quantity();
+                    $product_stats_map[$product_id]['total_revenue'] += $item->get_total();
+                    $product_stats_map[$product_id]['orders_count']++;
+                }
+            }
+            
+            // Sort by revenue and limit
+            uasort($product_stats_map, function($a, $b) {
+                return $b['total_revenue'] - $a['total_revenue'];
+            });
+            
+            $results = array_slice($product_stats_map, 0, $limit);
+            
         } else {
-            // Legacy Query
-            $query = $wpdb->prepare("
-                SELECT 
-                    oitemmeta_product.meta_value as product_id,
-                    SUM(oitemmeta_qty.meta_value) as total_quantity,
-                    SUM(oitemmeta_total.meta_value) as total_revenue,
-                    COUNT(DISTINCT p.ID) as orders_count
-                FROM {$wpdb->posts} p
-                INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON p.ID = oi.order_id
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
-                    ON oi.order_item_id = oitemmeta_product.order_item_id 
-                    AND oitemmeta_product.meta_key = '_product_id'
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
-                    ON oi.order_item_id = oitemmeta_qty.order_item_id 
-                    AND oitemmeta_qty.meta_key = '_qty'
-                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
-                    ON oi.order_item_id = oitemmeta_total.order_item_id 
-                    AND oitemmeta_total.meta_key = '_line_total'
-                WHERE p.post_type = 'shop_order'
-                    AND p.post_status IN ('wc-completed', 'wc-processing')
-                    AND p.post_date >= %s
-                    AND p.post_date < %s
-                    AND oi.order_item_type = 'line_item'
-                GROUP BY product_id
-                ORDER BY total_revenue DESC
-                LIMIT %d
-            ", $start_date, $end_date, $limit);
+            // No manager filter - use optimized SQL query
+            // Check if HPOS is enabled
+            $hpos_enabled = class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
+                           method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
+                           \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+            
+            if ($hpos_enabled) {
+                // HPOS Query
+                $query = $wpdb->prepare("
+                    SELECT 
+                        oitemmeta_product.meta_value as product_id,
+                        SUM(oitemmeta_qty.meta_value) as total_quantity,
+                        SUM(oitemmeta_total.meta_value) as total_revenue,
+                        COUNT(DISTINCT o.id) as orders_count
+                    FROM {$wpdb->prefix}wc_orders o
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON o.id = oi.order_id
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
+                        ON oi.order_item_id = oitemmeta_product.order_item_id 
+                        AND oitemmeta_product.meta_key = '_product_id'
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
+                        ON oi.order_item_id = oitemmeta_qty.order_item_id 
+                        AND oitemmeta_qty.meta_key = '_qty'
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
+                        ON oi.order_item_id = oitemmeta_total.order_item_id 
+                        AND oitemmeta_total.meta_key = '_line_total'
+                    WHERE o.status IN ('wc-completed', 'wc-processing')
+                        AND o.date_created_gmt >= %s
+                        AND o.date_created_gmt < %s
+                        AND oi.order_item_type = 'line_item'
+                    GROUP BY product_id
+                    ORDER BY total_revenue DESC
+                    LIMIT %d
+                ", $start_date, $end_date, $limit);
+            } else {
+                // Legacy Query
+                $query = $wpdb->prepare("
+                    SELECT 
+                        oitemmeta_product.meta_value as product_id,
+                        SUM(oitemmeta_qty.meta_value) as total_quantity,
+                        SUM(oitemmeta_total.meta_value) as total_revenue,
+                        COUNT(DISTINCT p.ID) as orders_count
+                    FROM {$wpdb->posts} p
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON p.ID = oi.order_id
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_product 
+                        ON oi.order_item_id = oitemmeta_product.order_item_id 
+                        AND oitemmeta_product.meta_key = '_product_id'
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_qty 
+                        ON oi.order_item_id = oitemmeta_qty.order_item_id 
+                        AND oitemmeta_qty.meta_key = '_qty'
+                    INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta oitemmeta_total 
+                        ON oi.order_item_id = oitemmeta_total.order_item_id 
+                        AND oitemmeta_total.meta_key = '_line_total'
+                    WHERE p.post_type = 'shop_order'
+                        AND p.post_status IN ('wc-completed', 'wc-processing')
+                        AND p.post_date >= %s
+                        AND p.post_date < %s
+                        AND oi.order_item_type = 'line_item'
+                    GROUP BY product_id
+                    ORDER BY total_revenue DESC
+                    LIMIT %d
+                ", $start_date, $end_date, $limit);
+            }
+            
+            $results = $wpdb->get_results($query);
         }
-        
-        $results = $wpdb->get_results($query);
         
         // Format with product data
         $formatted_products = array();
@@ -682,8 +907,17 @@ class Sales_Dashboard_Analytics {
             $compare_filter_type = $request->get_param('compareFilterType') ?: $request->get_param('compare_filter_type');
             $compare_filter_value = $request->get_param('compareFilterValue') ?: $request->get_param('compare_filter_value');
             
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $manager_id = null;
+            
+            // If account manager, use their own ID
+            if (!$permissions['is_super_admin']) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
             // Log for debugging
-            error_log("Monthly Revenue Request - filter_type: {$filter_type}, filter_value: {$filter_value}, compare: " . ($compare ? 'true' : 'false'));
+            error_log("Monthly Revenue Request - filter_type: {$filter_type}, filter_value: {$filter_value}, compare: " . ($compare ? 'true' : 'false') . ", manager_id: {$manager_id}");
             if ($compare) {
                 error_log("Monthly Revenue - Compare with filter_type: {$compare_filter_type}, filter_value: {$compare_filter_value}");
             }
@@ -702,7 +936,8 @@ class Sales_Dashboard_Analytics {
             $primary_data = $this->get_revenue_for_period_optimized(
                 $date_range['start'],
                 $date_range['end'],
-                $date_range['group_by']
+                $date_range['group_by'],
+                $manager_id
             );
             
             error_log("Monthly Revenue - Primary data count: " . count($primary_data));
@@ -751,7 +986,8 @@ class Sales_Dashboard_Analytics {
                         $compare_data = $this->get_revenue_for_period_optimized(
                             $compare_range['start'],
                             $compare_range['end'],
-                            $compare_range['group_by']
+                            $compare_range['group_by'],
+                            $manager_id
                         );
                         
                         error_log("Monthly Revenue - Compare data count: " . count($compare_data));
@@ -859,11 +1095,16 @@ class Sales_Dashboard_Analytics {
      * Get revenue data for a specific period - optimized version
      * Uses direct database queries for better performance
      */
-    private function get_revenue_for_period_optimized($start_date, $end_date, $group_by = 'month') {
+    private function get_revenue_for_period_optimized($start_date, $end_date, $group_by = 'month', $manager_id = null) {
         global $wpdb;
         
         try {
-            // Use direct database query for better performance
+            // If manager filter is active, use simplified WC API approach
+            if ($manager_id) {
+                return $this->get_revenue_for_period_fallback($start_date, $end_date, $group_by, $manager_id);
+            }
+            
+            // Use direct database query for better performance (super admin only)
             $table_orders = $wpdb->prefix . 'wc_orders';
             $table_meta = $wpdb->prefix . 'wc_orders_meta';
             
@@ -883,7 +1124,7 @@ class Sales_Dashboard_Analytics {
         } catch (Exception $e) {
             error_log('Revenue query error: ' . $e->getMessage());
             // Fallback to WC API method
-            return $this->get_revenue_for_period_fallback($start_date, $end_date, $group_by);
+            return $this->get_revenue_for_period_fallback($start_date, $end_date, $group_by, $manager_id);
         }
     }
     
@@ -982,19 +1223,27 @@ class Sales_Dashboard_Analytics {
     /**
      * Fallback method using WC API (slower but more compatible)
      */
-    private function get_revenue_for_period_fallback($start_date, $end_date, $group_by) {
+    private function get_revenue_for_period_fallback($start_date, $end_date, $group_by, $manager_id = null) {
         // Limit orders to prevent memory issues
         $orders = wc_get_orders(array(
             'status' => array('wc-completed', 'wc-processing'),
             'date_created' => $start_date . '...' . $end_date,
             'limit' => 1000, // Limit to prevent crashes
-            'return' => 'objects'
+            'return' => 'ids'
         ));
+        
+        // Filter orders by manager if applicable
+        if ($manager_id) {
+            $orders = $this->filter_orders_by_manager($orders, $manager_id);
+        }
         
         // Group orders by date
         $grouped_data = array();
         
-        foreach ($orders as $order) {
+        foreach ($orders as $order_id) {
+            $order = wc_get_order($order_id);
+            if (!$order) continue;
+            
             $order_date = $order->get_date_created();
             
             if ($group_by === 'month') {
@@ -1300,6 +1549,15 @@ class Sales_Dashboard_Analytics {
             $compare_start_date = $request->get_param('compareStartDate');
             $compare_end_date = $request->get_param('compareEndDate');
             
+            // Get user permissions
+            $permissions = $this->get_user_permissions();
+            $manager_id = null;
+            
+            // If account manager, use their own ID
+            if (!$permissions['is_super_admin']) {
+                $manager_id = $permissions['account_manager_id'];
+            }
+            
             // Get date range for primary period
             $range = null;
             if ($filter_type === 'date-range' && $start_date && $end_date) {
@@ -1316,7 +1574,7 @@ class Sales_Dashboard_Analytics {
             }
             
             // Get primary period statistics
-            $primary_stats = $this->get_category_statistics($range['start'], $range['end']);
+            $primary_stats = $this->get_category_statistics($range['start'], $range['end'], $manager_id);
             
             // Generate period label
             $period_label = $this->format_statistics_period_label($filter_type, $filter_value, $start_date, $end_date);
@@ -1345,7 +1603,7 @@ class Sales_Dashboard_Analytics {
                 }
                 
                 if ($compare_range) {
-                    $compare_stats = $this->get_category_statistics($compare_range['start'], $compare_range['end']);
+                    $compare_stats = $this->get_category_statistics($compare_range['start'], $compare_range['end'], $manager_id);
                     $compare_period_label = $this->format_statistics_period_label($compare_filter_type, $compare_filter_value, $compare_start_date, $compare_end_date);
                     
                     // Calculate growth for each category
@@ -1456,8 +1714,13 @@ class Sales_Dashboard_Analytics {
      * Get category statistics for a given period
      * Optimized with direct database queries
      */
-    private function get_category_statistics($start_date, $end_date) {
+    private function get_category_statistics($start_date, $end_date, $manager_id = null) {
         global $wpdb;
+        
+        // If manager filter, use WC API approach
+        if ($manager_id) {
+            return $this->get_category_statistics_filtered($start_date, $end_date, $manager_id);
+        }
         
         $hpos_enabled = get_option('woocommerce_custom_orders_table_enabled') === 'yes';
         
@@ -1466,6 +1729,68 @@ class Sales_Dashboard_Analytics {
         } else {
             return $this->get_category_statistics_posts($start_date, $end_date);
         }
+    }
+    
+    /**
+     * Get category statistics with manager filtering (using WC API)
+     */
+    private function get_category_statistics_filtered($start_date, $end_date, $manager_id) {
+        $orders = wc_get_orders(array(
+            'status' => array('wc-completed', 'wc-processing'),
+            'date_created' => $start_date . '...' . $end_date,
+            'limit' => -1,
+            'return' => 'ids'
+        ));
+        
+        // Filter orders by manager
+        $filtered_orders = $this->filter_orders_by_manager($orders, $manager_id);
+        
+        $category_stats = array();
+        $total_orders = 0;
+        $total_revenue = 0;
+        
+        foreach ($filtered_orders as $order_id) {
+            $order = wc_get_order($order_id);
+            if (!$order) continue;
+            
+            $total_orders++;
+            $total_revenue += $order->get_total();
+            
+            foreach ($order->get_items() as $item) {
+                $product = $item->get_product();
+                if (!$product) continue;
+                
+                $category_ids = $product->get_category_ids();
+                foreach ($category_ids as $cat_id) {
+                    $category = get_term($cat_id, 'product_cat');
+                    if (!$category || is_wp_error($category)) continue;
+                    
+                    $cat_name = $category->name;
+                    
+                    if (!isset($category_stats[$cat_name])) {
+                        $category_stats[$cat_name] = array(
+                            'category' => $cat_name,
+                            'orders' => 0,
+                            'revenue' => 0
+                        );
+                    }
+                    
+                    $category_stats[$cat_name]['orders']++;
+                    $category_stats[$cat_name]['revenue'] += $item->get_total();
+                }
+            }
+        }
+        
+        // Sort by revenue descending
+        uasort($category_stats, function($a, $b) {
+            return $b['revenue'] - $a['revenue'];
+        });
+        
+        return array(
+            'total_orders' => $total_orders,
+            'total_revenue' => $total_revenue,
+            'categories' => array_values($category_stats)
+        );
     }
     
     /**

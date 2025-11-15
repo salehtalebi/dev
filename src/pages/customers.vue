@@ -41,7 +41,7 @@
                   clearable
                 />
               </VCol>
-              <VCol cols="12" md="2">
+              <VCol v-if="isSuperAdmin" cols="12" md="2">
                 <VSelect
                   v-model="localFilters.accountManager"
                   :items="accountManagers"
@@ -245,6 +245,7 @@
 
 <script setup>
 import { useExport } from '@/composables/useExport'
+import { useAuthStore } from '@/stores/auth'
 import { useCustomersStore } from '@/stores/customers'
 import { format } from 'date-fns'
 import { computed, onMounted, ref } from 'vue'
@@ -252,7 +253,11 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const customersStore = useCustomersStore()
+const authStore = useAuthStore()
 const { exportCustomers: exportCustomersToFile, isExporting: exportLoading, error: exportError } = useExport()
+
+// Check if current user is super admin
+const isSuperAdmin = computed(() => authStore.user?.is_super_admin || false)
 
 // Local state
 const localFilters = ref({
