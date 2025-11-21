@@ -7,13 +7,20 @@ import { defineStore } from 'pinia'
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     stats: {
+      // Core totals
       totalOrders: 0,
       totalRevenue: 0,
       totalCustomers: 0,
       averageOrderValue: 0,
+      // Today metrics
+      todayOrders: 0,
+      todayRevenue: 0,
+      newCustomers: 0,
+      // Growth metrics
+      ordersGrowth: 0,
+      revenueGrowth: 0,
       monthlyGrowth: 0,
       customersGrowth: 0,
-      ordersGrowth: 0,
     },
     recentOrders: [],
     topProducts: [],
@@ -155,13 +162,22 @@ export const useDashboardStore = defineStore('dashboard', {
         const stats = await api.getAnalytics(params)
 
         this.stats = {
-          totalOrders: stats.total_orders || 0,
-          totalRevenue: stats.total_revenue || 0,
-          totalCustomers: stats.total_customers || 0,
-          averageOrderValue: stats.average_order_value || 0,
-          monthlyGrowth: stats.monthly_growth || 0,
-          customersGrowth: stats.customers_growth || 0,
-          ordersGrowth: stats.orders_growth || 0,
+          // Totals (fallback to today metrics if period-specific totals absent)
+          totalOrders: stats.total_orders ?? stats.todayOrders ?? 0,
+          // Use numeric coercion to avoid string values
+          totalRevenue: stats.total_revenue ?? stats.todayRevenue ?? 0,
+          totalCustomers: stats.total_customers ?? stats.newCustomers ?? 0,
+          averageOrderValue: stats.averageOrderValue ?? stats.average_order_value ?? 0,
+          // Today metrics
+          todayOrders: stats.todayOrders ?? 0,
+          todayRevenue: stats.todayRevenue ?? 0,
+          newCustomers: stats.newCustomers ?? 0,
+          // Growth metrics (fallback chain)
+          ordersGrowth: stats.ordersGrowth ?? stats.growth_percentage ?? 0,
+          revenueGrowth: stats.revenueGrowth ?? stats.growth_percentage ?? 0,
+          // Legacy / compatibility fields (will often be 0 if not provided)
+          monthlyGrowth: stats.monthly_growth ?? stats.growth_percentage ?? 0,
+          customersGrowth: stats.customers_growth ?? 0,
         }
         console.log('Dashboard stats fetched successfully')
       } catch (error) {

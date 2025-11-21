@@ -222,11 +222,11 @@ class Sales_Dashboard_Analytics {
             $current_month_start = date('Y-m-01 00:00:00');
             $current_month_end = date('Y-m-t 23:59:59');
             
-            // Get basic stats using limited queries to avoid memory issues
+            // Get basic stats for current month
             $current_orders = wc_get_orders(array(
-                'status' => array('wc-completed', 'wc-processing'),
+                'status' => array('completed', 'processing'),
                 'date_created' => $current_month_start . '...' . $current_month_end,
-                'limit' => 1000, // Limit to avoid memory exhaustion
+                'limit' => -1,
                 'return' => 'ids'
             ));
             
@@ -234,11 +234,11 @@ class Sales_Dashboard_Analytics {
             if ($manager_id || !$permissions['is_super_admin']) {
                 $current_orders = $this->filter_orders_by_manager($current_orders, $manager_id);
             }
-            
+
             $total_orders = count($current_orders);
             $total_revenue = 0;
             $customer_ids = array();
-            
+
             // Load full order objects only for filtered IDs
             foreach ($current_orders as $order_id) {
                 $order = wc_get_order($order_id);
@@ -247,6 +247,30 @@ class Sales_Dashboard_Analytics {
                     if ($order->get_customer_id() > 0) {
                         $customer_ids[] = $order->get_customer_id();
                     }
+                }
+            }
+
+            // Also compute today's orders/revenue separately so frontend 'today' metrics are accurate
+            $today_start = date('Y-m-d 00:00:00');
+            $today_end = date('Y-m-d 23:59:59');
+            $today_order_ids = wc_get_orders(array(
+                'status' => array('completed', 'processing'),
+                'date_created' => $today_start . '...' . $today_end,
+                'limit' => -1,
+                'return' => 'ids'
+            ));
+
+            if ($manager_id || !$permissions['is_super_admin']) {
+                $today_order_ids = $this->filter_orders_by_manager($today_order_ids, $manager_id);
+            }
+
+            $todayOrders = 0;
+            $todayRevenue = 0;
+            foreach ($today_order_ids as $oid) {
+                $o = wc_get_order($oid);
+                if ($o) {
+                    $todayOrders++;
+                    $todayRevenue += $o->get_total();
                 }
             }
             
@@ -258,9 +282,9 @@ class Sales_Dashboard_Analytics {
             $prev_month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
             
             $prev_orders = wc_get_orders(array(
-                'status' => array('wc-completed', 'wc-processing'),
+                'status' => array('completed', 'processing'),
                 'date_created' => $prev_month_start . '...' . $prev_month_end,
-                'limit' => 1000, // Also limit previous month
+                'limit' => -1,
                 'return' => 'ids'
             ));
             
@@ -287,8 +311,8 @@ class Sales_Dashboard_Analytics {
             }
             
             $result = array(
-                'todayOrders' => $total_orders, // Frontend expects this key
-                'todayRevenue' => $total_revenue, // Frontend expects this key
+                'todayOrders' => $todayOrders, // Frontend expects this key
+                'todayRevenue' => $todayRevenue, // Frontend expects this key
                 'newCustomers' => $new_customers,
                 'averageOrderValue' => $average_order_value,
                 'ordersGrowth' => round($growth_percentage, 2),
