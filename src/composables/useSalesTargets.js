@@ -9,7 +9,7 @@ export function useSalesTargets() {
     const isSuperAdmin = computed(() => store.isSuperAdmin)
     const myManagerId = computed(() => store.myManagerId)
     const targets = computed(() => store.targets)
-    const brandCategories = computed(() => store.brandCategories)
+    const brands = computed(() => store.brands)
 
     const progressFor = (period_type, period_key, manager_id = null, brand = null) => {
         const key = `${period_type}|${period_key}|${manager_id || 'global'}|${brand || 'all'}`
@@ -18,7 +18,7 @@ export function useSalesTargets() {
 
     const fetchInitial = async () => {
         await Promise.all([
-            store.fetchBrandCategories(),
+            store.fetchBrands(),
             store.fetchTargets({ period_type: 'month', period_key: new Date().toISOString().slice(0, 7) })
         ])
     }
@@ -27,7 +27,7 @@ export function useSalesTargets() {
         isSuperAdmin,
         myManagerId,
         targets,
-        brandCategories,
+        brands,
         loading: computed(() => store.loading),
         error: computed(() => store.error),
         fetchTargets: store.fetchTargets,
@@ -35,7 +35,7 @@ export function useSalesTargets() {
         createTarget: store.createTarget,
         updateTarget: store.updateTarget,
         deleteTarget: store.deleteTarget,
-        fetchBrandCategories: store.fetchBrandCategories,
+        fetchBrands: store.fetchBrands,
         progressFor,
         fetchInitial,
     }

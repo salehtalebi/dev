@@ -53,6 +53,11 @@ router.beforeEach(async (to, from, next) => {
     return next('/login')
   }
 
+  if (to.meta?.requiresSuperAdmin && !authStore.user?.is_super_admin) {
+    console.log('Route requires super admin, redirecting to dashboard')
+    return next('/dashboard')
+  }
+
   next()
 })
 

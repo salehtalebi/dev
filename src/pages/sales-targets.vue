@@ -32,7 +32,14 @@
             />
           </VCol>
           <VCol cols="12" md="3">
-            <VSelect :items="brandOptions" v-model="filters.brand" label="Category (Brand)" :clearable="true" />
+            <VSelect
+              :items="brandOptions"
+              item-title="text"
+              item-value="value"
+              v-model="filters.brand"
+              label="Brand"
+              clearable
+            />
           </VCol>
           <VCol cols="12" class="d-flex gap-2">
             <VBtn color="primary" @click="applyFilters" :loading="loading.list">Apply</VBtn>
@@ -98,7 +105,14 @@
               />
             </VCol>
             <VCol cols="12" md="6">
-              <VSelect :items="brandOptions" v-model="form.brand" label="Category (Brand)" :clearable="true" />
+              <VSelect
+                :items="brandOptions"
+                item-title="text"
+                item-value="value"
+                v-model="form.brand"
+                label="Brand"
+                clearable
+              />
             </VCol>
             <VCol cols="12" md="6">
               <VTextField v-model.number="form.target_amount" label="Target Amount" type="number" min="0" />
@@ -126,7 +140,7 @@ import { useSalesTargets } from '@/composables/useSalesTargets'
 import { useSalesTargetsStore } from '@/stores/salesTargets'
 import { computed, onMounted, ref } from 'vue'
 
-const { targets, fetchTargets, createTarget, updateTarget, deleteTarget, brandCategories, fetchBrandCategories } = useSalesTargets()
+const { targets, fetchTargets, createTarget, updateTarget, deleteTarget, brands, fetchBrands } = useSalesTargets()
 const store = useSalesTargetsStore()
 
 const isSuperAdmin = computed(() => store.isSuperAdmin)
@@ -150,7 +164,7 @@ const accountManagers = [
   { text: 'Jonathon Regan', value: '2533' }
 ]
 const filters = ref({ period_type: '', period_key: '', manager_id: '', brand: null })
-const brandOptions = computed(() => brandCategories.value.map(c => c.slug))
+const brandOptions = computed(() => brands.value.map(b => ({ text: b.name, value: b.slug })))
 
 const dialog = ref(false)
 const editing = ref(false)
@@ -215,7 +229,7 @@ function formatCurrency(v, currency='USD') { return API_CONFIG.formatCurrency(Nu
 function formatDate(v) { if(!v) return ''; return new Date(v).toLocaleString() }
 
 onMounted(async () => {
-  await fetchBrandCategories()
+  await fetchBrands()
   applyFilters()
 })
 </script>

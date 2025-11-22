@@ -6,10 +6,12 @@ class Sales_Dashboard_Sales_Targets {
 
     private $table_name;
     private $jwt_auth;
+    private $brand_taxonomy;
 
     public function __construct() {
         global $wpdb;
         $this->table_name = $wpdb->prefix . 'sales_dashboard_targets';
+        $this->brand_taxonomy = apply_filters('sales_dashboard_brand_taxonomy', 'pa_brand');
         add_action('rest_api_init', array($this, 'register_routes'));
     }
 
@@ -83,11 +85,42 @@ class Sales_Dashboard_Sales_Targets {
             'callback' => array($this, 'get_progress'),
             'permission_callback' => array($this, 'can_view_targets')
         ));
+
+        register_rest_route('sales-dashboard/v1', '/targets/brands', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_brands'),
+            'permission_callback' => array($this, 'can_view_targets')
+        ));
     }
 
     public function can_view_targets() {
         $p = $this->get_permissions();
         return $p && ($p['is_super_admin'] || !empty($p['account_manager_id']));
+    }
+
+    public function get_brands() {
+        if (!$this->brand_taxonomy || !taxonomy_exists($this->brand_taxonomy)) {
+            return array('data' => array());
+        }
+
+        $terms = get_terms(array(
+            'taxonomy' => $this->brand_taxonomy,
+            'hide_empty' => false,
+        ));
+
+        if (is_wp_error($terms)) {
+            return new WP_Error('brand_terms_failed', $terms->get_error_message(), array('status' => 500));
+        }
+
+        $items = array_map(function($term) {
+            return array(
+                'id' => $term->term_id,
+                'name' => $term->name,
+                'slug' => $term->slug,
+            );
+        }, $terms);
+
+        return array('data' => $items);
     }
 
     public function can_manage_targets() {
@@ -336,8 +369,6 @@ class Sales_Dashboard_Sales_Targets {
             'return' => 'ids'
         );
 
-        // Potential brand filtering stub (assumes product taxonomy 'product_brand')
-        // We'll filter after loading orders if brand provided.
         $order_ids = wc_get_orders($args);
         if (!is_array($order_ids) || empty($order_ids)) {
             return 0.0;
@@ -397,11 +428,13 @@ class Sales_Dashboard_Sales_Targets {
     private function order_has_brand($order, $brand_slug) {
         if (!$brand_slug) return true; // no brand filter
         $brand_slug = sanitize_title($brand_slug);
+        if (!$this->brand_taxonomy || !taxonomy_exists($this->brand_taxonomy)) {
+            return false;
+        }
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             if (!$product) continue;
-            // Use WooCommerce product categories as brand dimension
-            $terms = get_the_terms($product->get_id(), 'product_cat');
+            $terms = get_the_terms($product->get_id(), $this->brand_taxonomy);
             if (is_array($terms)) {
                 foreach ($terms as $t) {
                     if ($t->slug === $brand_slug) {

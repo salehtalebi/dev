@@ -4,7 +4,7 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
 import { computed } from 'vue'
 
 const auth = useAuthStore()
-const isSuperAdmin = computed(() => auth.isAdmin)
+const isSuperAdmin = computed(() => !!auth.user?.is_super_admin)
 </script>
 
 <template>

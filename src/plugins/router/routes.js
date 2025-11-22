@@ -43,6 +43,7 @@ export const routes = [
       {
         path: 'sales-targets',
         component: () => import('@/pages/sales-targets.vue'),
+        meta: { requiresSuperAdmin: true },
       },
     ],
   },

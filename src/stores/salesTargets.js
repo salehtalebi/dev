@@ -35,12 +35,14 @@ export const useSalesTargetsStore = defineStore('salesTargets', {
             currency: 'USD',
             notes: '',
         },
-        brandCategories: [],
+        brands: [],
     }),
     getters: {
         isSuperAdmin: () => {
             const auth = useAuthStore()
-            // treat administrator/shop_manager as super (adjust if backend exposes is_super_admin separately)
+            if (typeof auth.user?.is_super_admin !== 'undefined') {
+                return !!auth.user.is_super_admin
+            }
             return auth.isAdmin
         },
         myManagerId: () => {
@@ -151,16 +153,16 @@ export const useSalesTargetsStore = defineStore('salesTargets', {
                 this.loading.mutate = false
             }
         },
-        async fetchBrandCategories() {
-            // Use WordPress REST API base to avoid hitting the Vite dev origin
-            const url = `${API_CONFIG.WP_API_URL}/product_cat?per_page=100`
+        async fetchBrands() {
             try {
-                const res = await fetch(url)
-                if (!res.ok) return
-                const cats = await res.json()
-                this.brandCategories = cats.map(c => ({ id: c.id, name: c.name, slug: c.slug }))
+                const res = await fetch(`${BASE}/targets/brands`, {
+                    headers: this.buildHeaders(),
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.message || 'Failed to load brands')
+                this.brands = Array.isArray(data.data) ? data.data : []
             } catch (e) {
-                // silent failure
+                console.warn('[salesTargets] fetchBrands failed', e)
             }
         },
     },
