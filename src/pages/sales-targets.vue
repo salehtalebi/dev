@@ -56,6 +56,7 @@
               <th>Period</th>
               <th>Target</th>
               <th>Currency</th>
+              <th>Notes</th>
               <th>Created</th>
               <th v-if="isSuperAdmin">Actions</th>
             </tr>
@@ -66,11 +67,12 @@
             </tr>
             <tr v-for="t in targets" :key="t.id">
               <td>{{ t.id }}</td>
-              <td>{{ t.manager_id || 'GLOBAL' }}</td>
+              <td>{{ displayManagerName(t.manager_id) }}</td>
               <td>{{ t.brand_slug || '—' }}</td>
               <td>{{ t.period_type }} / {{ t.period_key }}</td>
               <td>{{ formatCurrency(t.target_amount) }}</td>
               <td>{{ t.currency }}</td>
+              <td>{{ t.notes || '—' }}</td>
               <td>{{ formatDate(t.created_at) }}</td>
               <td v-if="isSuperAdmin">
                 <VBtn icon size="x-small" variant="text" @click="editTarget(t)"><VIcon icon="bx-edit" /></VBtn>
@@ -227,6 +229,12 @@ async function saveTarget() {
 import { API_CONFIG } from '@/config/api'
 function formatCurrency(v, currency='USD') { return API_CONFIG.formatCurrency(Number(v||0), currency) }
 function formatDate(v) { if(!v) return ''; return new Date(v).toLocaleString() }
+function displayManagerName(id) {
+  if (!id) return 'GLOBAL'
+  const match = accountManagers.find(m => m.value === id)
+  if (match) return match.text
+  return API_CONFIG.MANAGERS?.[id] || id
+}
 
 onMounted(async () => {
   await fetchBrands()
