@@ -7,6 +7,7 @@ class Sales_Dashboard_Analytics {
     
     private $managers;
     private $jwt_auth;
+    private $brand_taxonomy;
     
     public function __construct() {
         $this->managers = array(
@@ -17,6 +18,7 @@ class Sales_Dashboard_Analytics {
             '2532'  => 'Sarah Hearn',
             '2533'  => 'Jonathon Regan',
         );
+        $this->brand_taxonomy = apply_filters('sales_dashboard_brand_taxonomy', 'pa_brand');
         
         add_action('rest_api_init', array($this, 'register_routes'));
     }
@@ -101,6 +103,91 @@ class Sales_Dashboard_Analytics {
         }
         
         return $filtered_ids;
+    }
+
+    private function has_brand_taxonomy() {
+        return $this->brand_taxonomy && taxonomy_exists($this->brand_taxonomy);
+    }
+
+    private function get_product_brands($product_id) {
+        if (!$product_id || !$this->has_brand_taxonomy()) {
+            return array();
+        }
+        $terms = wp_get_post_terms($product_id, $this->brand_taxonomy, array('fields' => 'all'));
+        if (is_wp_error($terms)) {
+            return array();
+        }
+        return $terms;
+    }
+
+    /**
+     * Build brand breakdown for a list of order IDs using direct SQL joins.
+     */
+    private function calculate_brand_breakdown_from_orders($order_ids) {
+        if (!$this->has_brand_taxonomy() || empty($order_ids)) {
+            return array();
+        }
+
+        $order_ids = array_filter(array_map('intval', (array) $order_ids));
+        if (empty($order_ids)) {
+            return array();
+        }
+
+        global $wpdb;
+
+        $order_ids_str = implode(',', $order_ids);
+        $table_items = $wpdb->prefix . 'woocommerce_order_items';
+        $table_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+        $term_relationships = $wpdb->term_relationships;
+        $term_taxonomy = $wpdb->term_taxonomy;
+        $terms_table = $wpdb->terms;
+
+        $query = "
+            SELECT 
+                terms.term_id AS brand_id,
+                terms.slug AS brand_slug,
+                terms.name AS brand_name,
+                COUNT(DISTINCT oi.order_id) AS orders_count,
+                SUM(COALESCE(CAST(line_total.meta_value AS DECIMAL(20,6)), 0)) AS revenue_amount
+            FROM {$table_items} oi
+            INNER JOIN {$table_itemmeta} product_meta
+                ON oi.order_item_id = product_meta.order_item_id
+                AND product_meta.meta_key = '_product_id'
+            LEFT JOIN {$table_itemmeta} line_total
+                ON oi.order_item_id = line_total.order_item_id
+                AND line_total.meta_key = '_line_total'
+            INNER JOIN {$term_relationships} rel
+                ON CAST(product_meta.meta_value AS UNSIGNED) = rel.object_id
+            INNER JOIN {$term_taxonomy} tax
+                ON rel.term_taxonomy_id = tax.term_taxonomy_id
+                AND tax.taxonomy = %s
+            INNER JOIN {$terms_table} terms
+                ON tax.term_id = terms.term_id
+            WHERE oi.order_item_type = 'line_item'
+                AND oi.order_id IN ($order_ids_str)
+            GROUP BY terms.term_id, terms.slug, terms.name
+            HAVING orders_count > 0
+            ORDER BY orders_count DESC, revenue_amount DESC
+        ";
+
+        $rows = $wpdb->get_results($wpdb->prepare($query, $this->brand_taxonomy));
+
+        if (empty($rows)) {
+            return array();
+        }
+
+        $brands = array();
+        foreach ($rows as $row) {
+            $brands[] = array(
+                'brand' => $row->brand_name,
+                'brand_id' => intval($row->brand_id),
+                'brand_slug' => $row->brand_slug,
+                'orders' => intval($row->orders_count),
+                'revenue' => floatval($row->revenue_amount)
+            );
+        }
+
+        return $brands;
     }
     
     /**
@@ -1598,7 +1685,7 @@ class Sales_Dashboard_Analytics {
             }
             
             // Get primary period statistics
-            $primary_stats = $this->get_category_statistics($range['start'], $range['end'], $manager_id);
+            $primary_stats = $this->get_brand_statistics($range['start'], $range['end'], $manager_id);
             
             // Generate period label
             $period_label = $this->format_statistics_period_label($filter_type, $filter_value, $start_date, $end_date);
@@ -1606,7 +1693,7 @@ class Sales_Dashboard_Analytics {
             $response = array(
                 'total_orders' => $primary_stats['total_orders'],
                 'total_revenue' => $primary_stats['total_revenue'],
-                'categories' => $primary_stats['categories'],
+                'brands' => $primary_stats['brands'],
                 'period_start' => $range['start'],
                 'period_end' => $range['end'],
                 'period_label' => $period_label,
@@ -1627,77 +1714,78 @@ class Sales_Dashboard_Analytics {
                 }
                 
                 if ($compare_range) {
-                    $compare_stats = $this->get_category_statistics($compare_range['start'], $compare_range['end'], $manager_id);
+                    $compare_stats = $this->get_brand_statistics($compare_range['start'], $compare_range['end'], $manager_id);
                     $compare_period_label = $this->format_statistics_period_label($compare_filter_type, $compare_filter_value, $compare_start_date, $compare_end_date);
                     
                     // Calculate growth for each category
-                    $categories_with_growth = array();
-                    foreach ($primary_stats['categories'] as $category) {
-                        $cat_name = $category['category'];
-                        $compare_cat = null;
+                    $brands_with_growth = array();
+                    foreach ($primary_stats['brands'] as $brand_row) {
+                        $brand_name = $brand_row['brand'];
+                        $compare_brand = null;
                         
-                        // Find matching category in comparison data
-                        foreach ($compare_stats['categories'] as $c) {
-                            if ($c['category'] === $cat_name) {
-                                $compare_cat = $c;
+                        // Find matching brand in comparison data
+                        foreach ($compare_stats['brands'] as $b) {
+                            if ($b['brand'] === $brand_name) {
+                                $compare_brand = $b;
                                 break;
                             }
                         }
                         
-                        $cat_with_growth = $category;
+                        $brand_with_growth = $brand_row;
                         
-                        if ($compare_cat) {
+                        if ($compare_brand) {
                             // Calculate growth percentages
                             $orders_growth = 0;
-                            if ($compare_cat['orders'] > 0) {
-                                $orders_growth = (($category['orders'] - $compare_cat['orders']) / $compare_cat['orders']) * 100;
+                            if ($compare_brand['orders'] > 0) {
+                                $orders_growth = (($brand_row['orders'] - $compare_brand['orders']) / $compare_brand['orders']) * 100;
                             }
                             
                             $revenue_growth = 0;
-                            if ($compare_cat['revenue'] > 0) {
-                                $revenue_growth = (($category['revenue'] - $compare_cat['revenue']) / $compare_cat['revenue']) * 100;
+                            if ($compare_brand['revenue'] > 0) {
+                                $revenue_growth = (($brand_row['revenue'] - $compare_brand['revenue']) / $compare_brand['revenue']) * 100;
                             }
                             
-                            $cat_with_growth['compare_orders'] = $compare_cat['orders'];
-                            $cat_with_growth['compare_revenue'] = $compare_cat['revenue'];
-                            $cat_with_growth['orders_growth'] = round($orders_growth, 2);
-                            $cat_with_growth['revenue_growth'] = round($revenue_growth, 2);
+                            $brand_with_growth['compare_orders'] = $compare_brand['orders'];
+                            $brand_with_growth['compare_revenue'] = $compare_brand['revenue'];
+                            $brand_with_growth['orders_growth'] = round($orders_growth, 2);
+                            $brand_with_growth['revenue_growth'] = round($revenue_growth, 2);
                         } else {
-                            // Category doesn't exist in comparison period
-                            $cat_with_growth['compare_orders'] = 0;
-                            $cat_with_growth['compare_revenue'] = 0;
-                            $cat_with_growth['orders_growth'] = 100; // 100% increase (from 0)
-                            $cat_with_growth['revenue_growth'] = 100;
+                            // Brand doesn't exist in comparison period
+                            $brand_with_growth['compare_orders'] = 0;
+                            $brand_with_growth['compare_revenue'] = 0;
+                            $brand_with_growth['orders_growth'] = 100; // 100% increase (from 0)
+                            $brand_with_growth['revenue_growth'] = 100;
                         }
                         
-                        $categories_with_growth[] = $cat_with_growth;
+                        $brands_with_growth[] = $brand_with_growth;
                     }
                     
-                    // Add categories that exist in compare period but not in primary
-                    foreach ($compare_stats['categories'] as $compare_cat) {
+                    // Add brands that exist in compare period but not in primary
+                    foreach ($compare_stats['brands'] as $compare_brand) {
                         $exists = false;
-                        foreach ($primary_stats['categories'] as $cat) {
-                            if ($cat['category'] === $compare_cat['category']) {
+                        foreach ($primary_stats['brands'] as $brand_row) {
+                            if ($brand_row['brand'] === $compare_brand['brand']) {
                                 $exists = true;
                                 break;
                             }
                         }
                         
                         if (!$exists) {
-                            $categories_with_growth[] = array(
-                                'category' => $compare_cat['category'],
-                                'category_id' => $compare_cat['category_id'],
+                            $brands_with_growth[] = array(
+                                'brand' => $compare_brand['brand'],
+                                'brand_id' => $compare_brand['brand_id'],
+                                'brand_slug' => $compare_brand['brand_slug'],
                                 'orders' => 0,
                                 'revenue' => 0,
-                                'compare_orders' => $compare_cat['orders'],
-                                'compare_revenue' => $compare_cat['revenue'],
+                                'compare_orders' => $compare_brand['orders'],
+                                'compare_revenue' => $compare_brand['revenue'],
                                 'orders_growth' => -100, // 100% decrease (to 0)
                                 'revenue_growth' => -100
                             );
                         }
                     }
                     
-                    $response['categories'] = $categories_with_growth;
+                    $response['brands'] = $brands_with_growth;
                     $response['compare_total_orders'] = $compare_stats['total_orders'];
                     $response['compare_total_revenue'] = $compare_stats['total_revenue'];
                     $response['compare_period_start'] = $compare_range['start'];
@@ -1738,27 +1826,27 @@ class Sales_Dashboard_Analytics {
      * Get category statistics for a given period
      * Optimized with direct database queries
      */
-    private function get_category_statistics($start_date, $end_date, $manager_id = null) {
+    private function get_brand_statistics($start_date, $end_date, $manager_id = null) {
         global $wpdb;
         
         // If manager filter, use WC API approach
         if ($manager_id) {
-            return $this->get_category_statistics_filtered($start_date, $end_date, $manager_id);
+            return $this->get_brand_statistics_filtered($start_date, $end_date, $manager_id);
         }
         
         $hpos_enabled = get_option('woocommerce_custom_orders_table_enabled') === 'yes';
         
         if ($hpos_enabled) {
-            return $this->get_category_statistics_hpos($start_date, $end_date);
+            return $this->get_brand_statistics_hpos($start_date, $end_date);
         } else {
-            return $this->get_category_statistics_posts($start_date, $end_date);
+            return $this->get_brand_statistics_posts($start_date, $end_date);
         }
     }
     
     /**
      * Get category statistics with manager filtering (using WC API)
      */
-    private function get_category_statistics_filtered($start_date, $end_date, $manager_id) {
+    private function get_brand_statistics_filtered($start_date, $end_date, $manager_id) {
         $orders = wc_get_orders(array(
             'status' => array('wc-completed', 'wc-processing'),
             'date_created' => $start_date . '...' . $end_date,
@@ -1769,63 +1857,33 @@ class Sales_Dashboard_Analytics {
         // Filter orders by manager
         $filtered_orders = $this->filter_orders_by_manager($orders, $manager_id);
         
-        $category_stats = array();
         $total_orders = 0;
         $total_revenue = 0;
         
         foreach ($filtered_orders as $order_id) {
             $order = wc_get_order($order_id);
-            if (!$order) continue;
+            if (!$order) {
+                continue;
+            }
             
             $total_orders++;
             $total_revenue += $order->get_total();
-            
-            foreach ($order->get_items() as $item) {
-                $product = $item->get_product();
-                if (!$product) continue;
-                
-                $category_ids = $product->get_category_ids();
-                foreach ($category_ids as $cat_id) {
-                    $category = get_term($cat_id, 'product_cat');
-                    if (!$category || is_wp_error($category)) continue;
-                    
-                    $cat_name = $category->name;
-                    
-                    if (!isset($category_stats[$cat_name])) {
-                        $category_stats[$cat_name] = array(
-                            'category' => $cat_name,
-                            'orders' => 0,
-                            'revenue' => 0
-                        );
-                    }
-                    
-                    $category_stats[$cat_name]['orders']++;
-                    $category_stats[$cat_name]['revenue'] += $item->get_total();
-                }
-            }
         }
-        
-        // Sort by revenue descending
-        uasort($category_stats, function($a, $b) {
-            return $b['revenue'] - $a['revenue'];
-        });
-        
+
         return array(
             'total_orders' => $total_orders,
             'total_revenue' => $total_revenue,
-            'categories' => array_values($category_stats)
+            'brands' => $this->calculate_brand_breakdown_from_orders($filtered_orders)
         );
     }
     
     /**
      * Get category statistics using HPOS tables
      */
-    private function get_category_statistics_hpos($start_date, $end_date) {
+    private function get_brand_statistics_hpos($start_date, $end_date) {
         global $wpdb;
         
         $table_orders = $wpdb->prefix . 'wc_orders';
-        $table_items = $wpdb->prefix . 'woocommerce_order_items';
-        $table_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
         
         // Get order IDs in date range with completed/processing status
         $order_ids = $wpdb->get_col($wpdb->prepare("
@@ -1840,7 +1898,7 @@ class Sales_Dashboard_Analytics {
             return array(
                 'total_orders' => 0,
                 'total_revenue' => 0,
-                'categories' => array()
+                'brands' => array()
             );
         }
         
@@ -1854,87 +1912,26 @@ class Sales_Dashboard_Analytics {
             FROM {$table_orders}
             WHERE id IN ($order_ids_str)
         ");
-        
-        // Get products from order items with order info
-        $products_data = $wpdb->get_results("
-            SELECT 
-                oi.order_id,
-                oi.order_item_id,
-                im1.meta_value as product_id,
-                im2.meta_value as line_total,
-                im3.meta_value as quantity
-            FROM {$table_items} oi
-            LEFT JOIN {$table_itemmeta} im1 ON oi.order_item_id = im1.order_item_id AND im1.meta_key = '_product_id'
-            LEFT JOIN {$table_itemmeta} im2 ON oi.order_item_id = im2.order_item_id AND im2.meta_key = '_line_total'
-            LEFT JOIN {$table_itemmeta} im3 ON oi.order_item_id = im3.order_item_id AND im3.meta_key = '_qty'
-            WHERE oi.order_id IN ($order_ids_str)
-            AND oi.order_item_type = 'line_item'
-        ");
-        
-        // Group by category
-        $categories_map = array();
-        
-        foreach ($products_data as $item) {
-            $product_id = intval($item->product_id);
-            $order_id = intval($item->order_id);
-            $line_total = floatval($item->line_total);
-            
-            if ($product_id > 0) {
-                // Get product categories
-                $terms = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
-                
-                if (!empty($terms) && !is_wp_error($terms)) {
-                    // Loop through ALL categories of this product
-                    foreach ($terms as $term) {
-                        $cat_name = $term->name;
-                        $cat_id = $term->term_id;
-                        
-                        if (!isset($categories_map[$cat_name])) {
-                            $categories_map[$cat_name] = array(
-                                'category' => $cat_name,
-                                'category_id' => $cat_id,
-                                'orders' => 0,
-                                'revenue' => 0,
-                                'order_ids' => array()
-                            );
-                        }
-                        
-                        // Count unique orders per category
-                        if (!in_array($order_id, $categories_map[$cat_name]['order_ids'])) {
-                            $categories_map[$cat_name]['order_ids'][] = $order_id;
-                            $categories_map[$cat_name]['orders']++;
-                        }
-                        
-                        // Add line total (revenue from this product only)
-                        $categories_map[$cat_name]['revenue'] += $line_total;
-                    }
-                }
-            }
+
+        if (!$this->has_brand_taxonomy()) {
+            return array(
+                'total_orders' => intval($totals->total_orders),
+                'total_revenue' => floatval($totals->total_revenue),
+                'brands' => array()
+            );
         }
-        
-        // Format categories
-        $categories = array();
-        foreach ($categories_map as $cat_data) {
-            unset($cat_data['order_ids']); // Remove internal tracking
-            $categories[] = $cat_data;
-        }
-        
-        // Sort by orders count
-        usort($categories, function($a, $b) {
-            return $b['orders'] - $a['orders'];
-        });
         
         return array(
             'total_orders' => intval($totals->total_orders),
             'total_revenue' => floatval($totals->total_revenue),
-            'categories' => $categories
+            'brands' => $this->calculate_brand_breakdown_from_orders($order_ids)
         );
     }
     
     /**
      * Get category statistics using Posts table (legacy)
      */
-    private function get_category_statistics_posts($start_date, $end_date) {
+    private function get_brand_statistics_posts($start_date, $end_date) {
         global $wpdb;
         
         // Get orders in date range
@@ -1951,7 +1948,7 @@ class Sales_Dashboard_Analytics {
             return array(
                 'total_orders' => 0,
                 'total_revenue' => 0,
-                'categories' => array()
+                'brands' => array()
             );
         }
         
@@ -1965,79 +1962,18 @@ class Sales_Dashboard_Analytics {
             AND meta_key = '_order_total'
         ");
         
-        // Get products from order items with line totals
-        $table_items = $wpdb->prefix . 'woocommerce_order_items';
-        $table_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
-        
-        $products_data = $wpdb->get_results("
-            SELECT 
-                oi.order_item_id,
-                oi.order_id,
-                im1.meta_value as product_id,
-                im2.meta_value as line_total,
-                im3.meta_value as quantity
-            FROM {$table_items} oi
-            LEFT JOIN {$table_itemmeta} im1 ON oi.order_item_id = im1.order_item_id AND im1.meta_key = '_product_id'
-            LEFT JOIN {$table_itemmeta} im2 ON oi.order_item_id = im2.order_item_id AND im2.meta_key = '_line_total'
-            LEFT JOIN {$table_itemmeta} im3 ON oi.order_item_id = im3.order_item_id AND im3.meta_key = '_qty'
-            WHERE oi.order_id IN ($order_ids_str)
-            AND oi.order_item_type = 'line_item'
-        ");
-        
-        // Group by category
-        $categories_map = array();
-        
-        foreach ($products_data as $item) {
-            $product_id = intval($item->product_id);
-            $order_id = intval($item->order_id);
-            $line_total = floatval($item->line_total);
-            
-            if ($product_id > 0) {
-                $terms = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
-                
-                if (!empty($terms) && !is_wp_error($terms)) {
-                    // Loop through ALL categories of this product
-                    foreach ($terms as $term) {
-                        $cat_name = $term->name;
-                        $cat_id = $term->term_id;
-                        
-                        if (!isset($categories_map[$cat_name])) {
-                            $categories_map[$cat_name] = array(
-                                'category' => $cat_name,
-                                'category_id' => $cat_id,
-                                'orders' => 0,
-                                'revenue' => 0,
-                                'order_ids' => array()
-                            );
-                        }
-                        
-                        // Count unique orders per category
-                        if (!in_array($order_id, $categories_map[$cat_name]['order_ids'])) {
-                            $categories_map[$cat_name]['order_ids'][] = $order_id;
-                            $categories_map[$cat_name]['orders']++;
-                        }
-                        
-                        // Add line total (revenue from this product only)
-                        $categories_map[$cat_name]['revenue'] += $line_total;
-                    }
-                }
-            }
+        if (!$this->has_brand_taxonomy()) {
+            return array(
+                'total_orders' => count($order_ids),
+                'total_revenue' => floatval($total_revenue),
+                'brands' => array()
+            );
         }
-        
-        $categories = array();
-        foreach ($categories_map as $cat_data) {
-            unset($cat_data['order_ids']);
-            $categories[] = $cat_data;
-        }
-        
-        usort($categories, function($a, $b) {
-            return $b['orders'] - $a['orders'];
-        });
-        
+
         return array(
             'total_orders' => count($order_ids),
             'total_revenue' => floatval($total_revenue),
-            'categories' => $categories
+            'brands' => $this->calculate_brand_breakdown_from_orders($order_ids)
         );
     }
     

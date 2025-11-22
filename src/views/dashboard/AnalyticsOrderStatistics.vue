@@ -174,8 +174,8 @@
           <div class="text-caption text-medium-emphasis">
             Total Orders - {{ totalStats.periodLabel || 'All Time' }}
           </div>
-          <div v-if="categoriesList.length > 0" class="text-caption text-medium-emphasis mt-1">
-            {{ categoriesList.length }} categories
+          <div v-if="brandsList.length > 0" class="text-caption text-medium-emphasis mt-1">
+            {{ brandsList.length }} brands
           </div>
           <div v-if="totalStats.hasComparison" class="mt-2">
             <VChip
@@ -199,7 +199,7 @@
             :series="chartData.series"
           />
           <div class="text-caption text-medium-emphasis mt-1">
-            Top {{ chartData.series.length }} Categories
+            Top {{ chartData.series.length }} Brands
           </div>
         </div>
         <div v-else class="text-caption text-medium-emphasis">No Data</div>
@@ -226,65 +226,65 @@
         </div>
       </VAlert>
 
-      <!-- Categories List -->
+      <!-- Brands List -->
       <VList class="card-list">
         <VListItem
-          v-for="(category, index) in displayedCategories"
-          :key="category.categoryId"
+          v-for="(brand, index) in displayedBrands"
+          :key="brand.brandId || brand.brandSlug || index"
         >
           <template #prepend>
             <VAvatar
               size="40"
               rounded
               variant="tonal"
-              :color="category.avatarColor"
+              :color="brand.avatarColor"
             >
-              <VIcon icon="bx-category" />
+              <VIcon icon="bx-purchase-tag" />
             </VAvatar>
           </template>
 
           <VListItemTitle class="font-weight-medium">
-            {{ category.category }}
+            {{ brand.brand }}
           </VListItemTitle>
           
           <VListItemSubtitle class="text-body-2">
             <div class="d-flex align-center gap-2">
-              <span>{{ category.revenueFormatted }}</span>
+              <span>{{ brand.revenueFormatted }}</span>
               <VChip
-                v-if="category.hasComparison"
-                :color="getGrowthColor(category.revenueGrowth)"
+                v-if="brand.hasComparison"
+                :color="getGrowthColor(brand.revenueGrowth)"
                 size="x-small"
                 variant="tonal"
               >
-                {{ category.revenueGrowthFormatted }}%
+                {{ brand.revenueGrowthFormatted }}%
               </VChip>
             </div>
           </VListItemSubtitle>
 
           <template #append>
             <div class="text-end">
-              <div class="font-weight-medium">{{ category.ordersFormatted }}</div>
-              <div v-if="category.hasComparison" class="text-caption">
+              <div class="font-weight-medium">{{ brand.ordersFormatted }}</div>
+              <div v-if="brand.hasComparison" class="text-caption">
                 <VChip
-                  :color="getGrowthColor(category.ordersGrowth)"
+                  :color="getGrowthColor(brand.ordersGrowth)"
                   size="x-small"
                   variant="tonal"
                 >
-                  {{ category.ordersGrowthFormatted }}%
+                  {{ brand.ordersGrowthFormatted }}%
                 </VChip>
               </div>
             </div>
           </template>
         </VListItem>
 
-        <VListItem v-if="categoriesList.length === 0 && !loading">
+        <VListItem v-if="brandsList.length === 0 && !loading">
           <VListItemTitle class="text-center text-medium-emphasis">
             No data available
           </VListItemTitle>
         </VListItem>
 
         <!-- Load More Button -->
-        <VListItem v-if="categoriesList.length > itemsToShow && !showAll">
+        <VListItem v-if="brandsList.length > itemsToShow && !showAll">
           <VBtn
             block
             variant="outlined"
@@ -292,7 +292,7 @@
             size="small"
             @click="showAll = true"
           >
-            Load More ({{ categoriesList.length - itemsToShow }} more)
+            Load More ({{ brandsList.length - itemsToShow }} more)
           </VBtn>
         </VListItem>
       </VList>
@@ -313,7 +313,7 @@ const {
   orderStatisticsFilters,
   loading,
   getDonutChartData,
-  getCategoriesList,
+  getBrandsList,
   getTotalStats,
   getGrowthColor,
   fetchOrderStatistics,
@@ -362,15 +362,15 @@ const yearOptions = computed(() => {
 
 // Computed data
 const chartData = computed(() => getDonutChartData.value)
-const categoriesList = computed(() => getCategoriesList.value)
+const brandsList = computed(() => getBrandsList.value)
 const totalStats = computed(() => getTotalStats.value)
 
-// Display limited or all categories
-const displayedCategories = computed(() => {
+// Display limited or all brands
+const displayedBrands = computed(() => {
   if (showAll.value) {
-    return categoriesList.value
+    return brandsList.value
   }
-  return categoriesList.value.slice(0, itemsToShow)
+  return brandsList.value.slice(0, itemsToShow)
 })
 
 // Chart options
@@ -434,10 +434,10 @@ const chartOptions = computed(() => {
             },
             total: {
               show: true,
-              label: 'Top 5 Categories',
+              label: 'Top 5 Brands',
               fontSize: '13px',
               formatter: () => {
-                // Show sum of top 5 categories only
+                // Show sum of top 5 brands only
                 const sum = chartData.value.series.reduce((s, v) => s + v, 0)
                 return sum.toString()
               },

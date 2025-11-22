@@ -15,44 +15,45 @@ export function useOrderStatistics() {
 
     // Chart data for donut chart
     const getDonutChartData = computed(() => {
-        const categories = orderStatistics.value.categories || []
+        const brands = orderStatistics.value.brands || []
 
-        if (categories.length === 0) {
+        if (brands.length === 0) {
             return {
                 series: [],
                 labels: []
             }
         }
 
-        // Take top 5 categories by orders
-        const topCategories = categories.slice(0, 5)
+        // Take top 5 brands by orders
+        const topBrands = brands.slice(0, 5)
 
         return {
-            series: topCategories.map(cat => cat.orders || 0),
-            labels: topCategories.map(cat => cat.category || 'Unknown')
+            series: topBrands.map(brand => brand.orders || 0),
+            labels: topBrands.map(brand => brand.brand || 'Unknown')
         }
     })
 
-    // Categories list with formatted data
-    const getCategoriesList = computed(() => {
-        const categories = orderStatistics.value.categories || []
+    // Brands list with formatted data
+    const getBrandsList = computed(() => {
+        const brands = orderStatistics.value.brands || []
         const hasComparison = !!orderStatistics.value.comparisonSummary
 
-        return categories.map((cat, idx) => ({
-            category: cat.category,
-            categoryId: cat.category_id,
-            orders: cat.orders || 0,
-            revenue: cat.revenue || 0,
-            compareOrders: cat.compare_orders || 0,
-            compareRevenue: cat.compare_revenue || 0,
-            ordersGrowth: cat.orders_growth || 0,
-            revenueGrowth: cat.revenue_growth || 0,
+        return brands.map((brand, idx) => ({
+            brand: brand.brand,
+            brandId: brand.brand_id,
+            brandSlug: brand.brand_slug,
+            orders: brand.orders || 0,
+            revenue: brand.revenue || 0,
+            compareOrders: brand.compare_orders || 0,
+            compareRevenue: brand.compare_revenue || 0,
+            ordersGrowth: brand.orders_growth || 0,
+            revenueGrowth: brand.revenue_growth || 0,
             hasComparison,
             // Display properties
-            ordersFormatted: (cat.orders || 0).toLocaleString('en-US'),
-            revenueFormatted: `$${(cat.revenue || 0).toLocaleString('en-US')}`,
-            ordersGrowthFormatted: formatGrowth(cat.orders_growth),
-            revenueGrowthFormatted: formatGrowth(cat.revenue_growth),
+            ordersFormatted: (brand.orders || 0).toLocaleString('en-US'),
+            revenueFormatted: `$${(brand.revenue || 0).toLocaleString('en-US')}`,
+            ordersGrowthFormatted: formatGrowth(brand.orders_growth),
+            revenueGrowthFormatted: formatGrowth(brand.revenue_growth),
             avatarColor: getAvatarColor(idx),
         }))
     })
@@ -155,7 +156,7 @@ export function useOrderStatistics() {
 
         // Computed data
         getDonutChartData,
-        getCategoriesList,
+        getBrandsList,
         getTotalStats,
 
         // Helpers

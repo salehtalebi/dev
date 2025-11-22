@@ -71,7 +71,7 @@ export const useDashboardStore = defineStore('dashboard', {
     orderStatistics: {
       totalOrders: 0,
       totalRevenue: 0,
-      categories: [],
+      brands: [],
       compareTotalOrders: 0,
       compareTotalRevenue: 0,
       comparisonSummary: null,
@@ -498,7 +498,7 @@ export const useDashboardStore = defineStore('dashboard', {
         this.orderStatistics = {
           totalOrders: response.total_orders || 0,
           totalRevenue: response.total_revenue || 0,
-          categories: response.categories || [],
+          brands: response.brands || [],
           compareTotalOrders: response.compare_total_orders || 0,
           compareTotalRevenue: response.compare_total_revenue || 0,
           comparisonSummary: response.comparison_summary || null,
@@ -508,7 +508,7 @@ export const useDashboardStore = defineStore('dashboard', {
 
         console.debug('[dashboard] orderStatistics fetched:', {
           totalOrders: this.orderStatistics.totalOrders,
-          categoriesCount: this.orderStatistics.categories.length,
+          brandsCount: this.orderStatistics.brands.length,
           hasComparison: !!response.comparison_summary,
           periodLabel: this.orderStatistics.periodLabel,
           comparePeriodLabel: this.orderStatistics.comparePeriodLabel
