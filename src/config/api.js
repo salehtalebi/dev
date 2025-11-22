@@ -1,3 +1,16 @@
+const formatCurrencyValue = (amount = 0, currency = 'USD') => {
+  const numericAmount = typeof amount === 'number' ? amount : Number(amount) || 0
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(numericAmount)
+  } catch (err) {
+    return `${currency} ${numericAmount.toFixed(2)}`
+  }
+}
+
 // API Configuration for Frontend
 export const API_CONFIG = {
   // Base URLs from environment variables
@@ -110,6 +123,9 @@ export const API_CONFIG = {
     EXPORT_SUCCESS: 'Export created successfully',
     ASSIGNMENT_SUCCESS: 'Assignment completed successfully',
   },
+
+  // Formatting helpers exposed for convenience
+  formatCurrency: formatCurrencyValue,
 }
 
 // Helper functions for API calls
@@ -181,12 +197,7 @@ export const API_HELPERS = {
   },
 
   // Format currency
-  formatCurrency: (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount)
-  },
+  formatCurrency: formatCurrencyValue,
 
   // Format date for display
   formatDisplayDate: (dateString) => {

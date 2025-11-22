@@ -121,6 +121,13 @@
       </VCol>
     </VRow>
 
+    <!-- Sales Targets Progress Widget -->
+    <VRow>
+      <VCol cols="12">
+        <SalesTargetsWidget />
+      </VCol>
+    </VRow>
+
     <!-- Recent Orders (Simplified) -->
     <VRow>
       <VCol cols="12">
@@ -185,6 +192,7 @@
 </template>
 
 <script setup>
+import SalesTargetsWidget from '@/components/SalesTargetsWidget.vue'
 import { useAnalytics } from '@/composables/useAnalytics'
 import { useDashboardStore } from '@/stores/dashboard'
 import AnalyticsManagerPerformance from '@/views/dashboard/AnalyticsManagerPerformance.vue'

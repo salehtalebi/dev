@@ -16,6 +16,7 @@ declare module 'vue' {
     MoreBtn: typeof import('./src/@core/components/MoreBtn.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SalesTargetsWidget: typeof import('./src/components/SalesTargetsWidget.vue')['default']
     ThemeSwitcher: typeof import('./src/@core/components/ThemeSwitcher.vue')['default']
   }
 }

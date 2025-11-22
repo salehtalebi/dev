@@ -62,6 +62,7 @@ class SalesDashboardPlugin {
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-analytics.php';
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-export.php';
         require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-account-managers.php';
+        require_once SALES_DASHBOARD_PLUGIN_DIR . 'includes/class-sales-targets.php';
         
         // Load admin class if in admin area
         if (is_admin()) {
@@ -83,6 +84,7 @@ class SalesDashboardPlugin {
         new Sales_Dashboard_Analytics();
         new Sales_Dashboard_Account_Managers();
         new Sales_Dashboard_Export();
+        $GLOBALS['sales_dashboard_sales_targets'] = new Sales_Dashboard_Sales_Targets();
         
         if (is_admin()) {
             new Sales_Dashboard_Admin();
@@ -137,6 +139,15 @@ class SalesDashboardPlugin {
             ON {$wpdb->usermeta} (meta_key, meta_value) 
             WHERE meta_key = '_account_manager_id'
         ");
+
+        // Create sales targets table
+        if (isset($GLOBALS['sales_dashboard_sales_targets'])) {
+            $GLOBALS['sales_dashboard_sales_targets']->create_table();
+        } else {
+            // Fallback: instantiate and create
+            $tmp = new Sales_Dashboard_Sales_Targets();
+            $tmp->create_table();
+        }
     }
     
     /**

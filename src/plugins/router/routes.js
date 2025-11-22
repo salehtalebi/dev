@@ -40,6 +40,10 @@ export const routes = [
         path: 'icons',
         component: () => import('@/pages/icons.vue'),
       },
+      {
+        path: 'sales-targets',
+        component: () => import('@/pages/sales-targets.vue'),
+      },
     ],
   },
   {

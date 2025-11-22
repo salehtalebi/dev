@@ -1,5 +1,10 @@
 <script setup>
-import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
+import { useAuthStore } from '@/stores/auth'
+import VerticalNavLink from '@layouts/components/VerticalNavLink.vue'
+import { computed } from 'vue'
+
+const auth = useAuthStore()
+const isSuperAdmin = computed(() => auth.isAdmin)
 </script>
 
 <template>
@@ -27,6 +32,16 @@ import VerticalNavLink from '@layouts/components/VerticalNavLink.vue';
       title: 'Customers Reports',
       icon: 'nu-two-user',
       to: '/customers',
+    }"
+  />
+
+  <!-- Sales Targets (Super Admin Only) -->
+  <VerticalNavLink
+    v-if="isSuperAdmin"
+    :item="{
+      title: 'Sales Targets',
+      icon: 'bx-target-lock',
+      to: '/sales-targets',
     }"
   />
 
