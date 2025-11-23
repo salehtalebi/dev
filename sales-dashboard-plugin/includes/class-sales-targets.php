@@ -382,7 +382,9 @@ class Sales_Dashboard_Sales_Targets {
         $total = 0.0;
         foreach ($order_ids as $oid) {
             $order = wc_get_order($oid);
-            if (!$order) continue;
+            if (!$order || $order instanceof WC_Order_Refund || $order->get_type() === 'shop_order_refund') {
+                continue;
+            }
             if ($brand) {
                 if (!$this->order_has_brand($order, $brand)) {
                     continue;
@@ -413,7 +415,9 @@ class Sales_Dashboard_Sales_Targets {
                 continue;
             }
             $order = wc_get_order($order_id);
-            if (!$order) continue;
+            if (!$order || $order instanceof WC_Order_Refund || $order->get_type() === 'shop_order_refund') {
+                continue;
+            }
             $cid = $order->get_customer_id();
             if ($cid) {
                 $cust_manager = get_user_meta($cid, '_account_manager_id', true);
