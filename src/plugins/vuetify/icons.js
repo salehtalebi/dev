@@ -3,6 +3,14 @@ import checkboxIndeterminate from '@images/svg/checkbox-indeterminate.svg'
 import checkboxUnchecked from '@images/svg/checkbox-unchecked.svg'
 import radioChecked from '@images/svg/radio-checked.svg'
 import radioUnchecked from '@images/svg/radio-unchecked.svg'
+import dashboard from '@images/icons/nuvior/dashboard.svg'
+import bag from '@images/icons/nuvior/bag.svg'
+import twouser from '@images/icons/nuvior/two-user.svg'
+import setting from '@images/icons/nuvior/setting.svg'
+import folder from '@images/icons/nuvior/folder.svg'
+import exporticon from '@images/icons/nuvior/export.svg'
+import filter from '@images/icons/nuvior/filter.svg'
+
 
 const customIcons = {
   'mdi-checkbox-blank-outline': checkboxUnchecked,
@@ -10,6 +18,13 @@ const customIcons = {
   'mdi-minus-box': checkboxIndeterminate,
   'mdi-radiobox-marked': radioChecked,
   'mdi-radiobox-blank': radioUnchecked,
+  'nu-dashboard': dashboard,
+  'nu-bag': bag,
+  'nu-two-user': twouser,
+  'nu-setting': setting,
+  'nu-folder': folder,
+  'nu-export': exporticon,
+  'nu-filter': filter,
 }
 
 const aliases = {
@@ -45,6 +60,13 @@ const aliases = {
   minus: 'bx-minus',
   sortAsc: 'bx-up-arrow-alt',
   sortDesc: 'bx-down-arrow-alt',
+  dashboard: 'nu-dashboard',
+  bag: 'nu-bag',
+  twouser: 'nu-two-user',
+  setting: 'nu-setting',
+  folder: 'nu-folder',
+  exporticon: 'nu-export',
+  filter: 'nu-filter'
 }
 
 export const iconify = {
@@ -55,7 +77,7 @@ export const iconify = {
       if (iconComponent)
         return h(iconComponent)
     }
-    
+
     return h(props.tag, {
       ...props,
 

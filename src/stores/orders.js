@@ -1,162 +1,256 @@
-/**
- * Orders Store - Pinia
- */
-import { ordersAPI } from '@/services/api'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { API_CONFIG } from '@/config/api'
 
-export const useOrdersStore = defineStore('orders', () => {
-  // State
-  const orders = ref([])
-  const currentOrder = ref(null)
-  const isLoading = ref(false)
-  const totalCount = ref(0)
-  const totalPages = ref(0)
-  const currentPage = ref(1)
-  
-  // Filters
-  const filters = ref({
-    status: '',
-    customer: '',
-    account_manager: '',
-    date_from: '',
-    date_to: '',
-    min_amount: '',
-    max_amount: '',
-    search: ''
-  })
-
-  // Getters
-  const filteredOrders = computed(() => {
-    let filtered = orders.value
-    
-    if (filters.value.status) {
-      filtered = filtered.filter(order => order.status === filters.value.status)
-    }
-    
-    if (filters.value.search) {
-      filtered = filtered.filter(order => 
-        order.id.toString().includes(filters.value.search) ||
-        order.billing.first_name.toLowerCase().includes(filters.value.search.toLowerCase()) ||
-        order.billing.last_name.toLowerCase().includes(filters.value.search.toLowerCase())
-      )
-    }
-    
-    return filtered
-  })
-
-  const orderStatuses = computed(() => [
-    { value: 'pending', text: 'در انتظار پرداخت', color: 'warning' },
-    { value: 'processing', text: 'در حال پردازش', color: 'info' },
-    { value: 'on-hold', text: 'در انتظار', color: 'secondary' },
-    { value: 'completed', text: 'تکمیل شده', color: 'success' },
-    { value: 'cancelled', text: 'لغو شده', color: 'error' },
-    { value: 'refunded', text: 'بازگشت داده شده', color: 'error' },
-    { value: 'failed', text: 'ناموفق', color: 'error' }
-  ])
-
-  // Actions
-  const fetchOrders = async (params = {}) => {
-    try {
-      isLoading.value = true
-      const queryParams = {
-        page: currentPage.value,
-        per_page: 20,
-        ...filters.value,
-        ...params
-      }
-      
-      const response = await ordersAPI.getOrders(queryParams)
-      orders.value = response.data
-      totalCount.value = response.totalCount
-      totalPages.value = response.totalPages
-      
-    } catch (error) {
-      console.error('Fetch orders error:', error)
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const fetchOrder = async (orderId) => {
-    try {
-      isLoading.value = true
-      const order = await ordersAPI.getOrder(orderId)
-      currentOrder.value = order
-      return order
-    } catch (error) {
-      console.error('Fetch order error:', error)
-      throw error
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const updateOrderStatus = async (orderId, status) => {
-    try {
-      const updatedOrder = await ordersAPI.updateOrderStatus(orderId, status)
-      
-      // Update in list
-      const index = orders.value.findIndex(order => order.id === orderId)
-      if (index !== -1) {
-        orders.value[index] = updatedOrder
-      }
-      
-      // Update current order if it's the same
-      if (currentOrder.value?.id === orderId) {
-        currentOrder.value = updatedOrder
-      }
-      
-      return updatedOrder
-    } catch (error) {
-      console.error('Update order status error:', error)
-      throw error
-    }
-  }
-
-  const setFilters = (newFilters) => {
-    filters.value = { ...filters.value, ...newFilters }
-    currentPage.value = 1
-  }
-
-  const clearFilters = () => {
-    filters.value = {
+export const useOrdersStore = defineStore('orders', {
+  state: () => ({
+    orders: [],
+    currentOrder: null,
+    totalOrders: 0,
+    loading: {
+      list: false,
+      detail: false,
+      update: false,
+    },
+    error: null,
+    pagination: {
+      page: 1,
+      perPage: 20,
+      totalPages: 1,
+      hasNext: false,
+      hasPrev: false,
+    },
+    filters: {
       status: '',
+      search: '',
       customer: '',
-      account_manager: '',
-      date_from: '',
-      date_to: '',
-      min_amount: '',
-      max_amount: '',
-      search: ''
-    }
-    currentPage.value = 1
-  }
+      accountManager: '',
+      dateFrom: '',
+      dateTo: '',
+      minAmount: null,
+      maxAmount: null,
+    },
+    sorting: {
+      orderby: 'date',
+      order: 'desc',
+    },
+  }),
 
-  const setPage = (page) => {
-    currentPage.value = page
-  }
+  getters: {
+    isLoading: (state) => Object.values(state.loading).some(loading => loading),
+    
+    filteredOrders: (state) => {
+      let filtered = [...state.orders]
+      
+      if (state.filters.search) {
+        const search = state.filters.search.toLowerCase()
+        filtered = filtered.filter(order => 
+          order.id.toString().includes(search) ||
+          order.billing?.first_name?.toLowerCase().includes(search) ||
+          order.billing?.last_name?.toLowerCase().includes(search) ||
+          order.billing?.email?.toLowerCase().includes(search)
+        )
+      }
+      
+      return filtered
+    },
 
-  return {
-    // State
-    orders,
-    currentOrder,
-    isLoading,
-    totalCount,
-    totalPages,
-    currentPage,
-    filters,
-    
-    // Getters
-    filteredOrders,
-    orderStatuses,
-    
-    // Actions
-    fetchOrders,
-    fetchOrder,
-    updateOrderStatus,
-    setFilters,
-    clearFilters,
-    setPage
-  }
+ orderStatuses: () => [
+  { value: 'pending', text: 'Pending payment', color: 'warning' },
+  { value: 'processing', text: 'Processing', color: 'info' },
+  { value: 'on-hold', text: 'On hold', color: 'secondary' },
+  { value: 'completed', text: 'Completed', color: 'success' },
+  { value: 'cancelled', text: 'Cancelled', color: 'error' },
+  { value: 'refunded', text: 'Refunded', color: 'error' },
+  { value: 'failed', text: 'Failed', color: 'error' },
+],
+
+    currentPage: (state) => state.pagination.page,
+    totalPages: (state) => state.pagination.totalPages,
+    hasNextPage: (state) => state.pagination.hasNext,
+    hasPrevPage: (state) => state.pagination.hasPrev,
+  },
+
+  actions: {
+    async makeRequest(url, options = {}) {
+      const config = {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+
+      if (config.method !== 'GET' && options.body) {
+        config.body = JSON.stringify(options.body)
+      }
+
+      console.log('Making request to:', `${API_CONFIG.BASE_URL}${url}`)
+      console.log('With headers:', config.headers)
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}${url}`, config)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `HTTP ${response.status}`)
+      }
+      
+      return response.json()
+    },
+
+    async fetchOrders(page = 1, refresh = false) {
+      if (this.loading.list && !refresh) return
+
+      this.loading.list = true
+      this.error = null
+
+      try {
+        const params = {
+          page,
+          per_page: this.pagination.perPage,
+          orderby: this.sorting.orderby,
+          order: this.sorting.order,
+          ...this.buildAPIParams(),
+        }
+
+        const query = new URLSearchParams(params).toString()
+        const response = await this.makeRequest(`${API_CONFIG.WC_API_URL}/orders${query ? '?' + query : ''}`.replace(API_CONFIG.BASE_URL, ''))
+        
+        if (refresh || page === 1) {
+          this.orders = response.data || response || []
+        } else {
+          this.orders.push(...(response.data || response || []))
+        }
+
+        this.updatePagination(response, page)
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch orders:', error)
+        // Add mock data for testing
+        this.orders = [
+          {
+            id: 123,
+            status: 'completed',
+            date_created: '2023-12-01T12:00:00',
+            total: '125000',
+            billing: {
+              first_name: 'علی',
+              last_name: 'رضایی',
+              email: 'ali@test.com'
+            },
+            line_items: [
+              { name: 'محصول تست', quantity: 2, price: '62500' }
+            ]
+          }
+        ]
+        this.totalOrders = 1
+      } finally {
+        this.loading.list = false
+      }
+    },
+
+    async fetchOrder(orderId) {
+      this.loading.detail = true
+      this.error = null
+
+      try {
+        const order = await this.makeRequest(`${API_CONFIG.WC_API_URL}/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''))
+        this.currentOrder = order
+        return order
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to fetch order:', error)
+        return null
+      } finally {
+        this.loading.detail = false
+      }
+    },
+
+    async updateOrderStatus(orderId, status) {
+      this.loading.update = true
+      this.error = null
+
+      try {
+        const updatedOrder = await this.makeRequest(`${API_CONFIG.WC_API_URL}/orders/${orderId}`.replace(API_CONFIG.BASE_URL, ''), {
+          method: 'PUT',
+          body: { status }
+        })
+        
+        // Update order in the list
+        const index = this.orders.findIndex(o => o.id === orderId)
+        if (index !== -1) {
+          this.orders[index] = { ...this.orders[index], status, ...updatedOrder }
+        }
+        
+        // Update current order if it's the same
+        if (this.currentOrder && this.currentOrder.id === orderId) {
+          this.currentOrder = { ...this.currentOrder, status, ...updatedOrder }
+        }
+        
+        return updatedOrder
+      } catch (error) {
+        this.error = error.message
+        console.error('Failed to update order status:', error)
+        throw error
+      } finally {
+        this.loading.update = false
+      }
+    },
+
+    setFilters(filters) {
+      this.filters = { ...this.filters, ...filters }
+      this.pagination.page = 1
+    },
+
+    setSorting(sorting) {
+      this.sorting = { ...this.sorting, ...sorting }
+    },
+
+    updatePagination(response, page) {
+      this.totalOrders = response.total || 0
+      this.pagination = {
+        page: page,
+        perPage: this.pagination.perPage,
+        totalPages: Math.ceil((response.total || 0) / this.pagination.perPage),
+        hasNext: response.total > (page * this.pagination.perPage),
+        hasPrev: page > 1,
+      }
+    },
+
+    buildAPIParams() {
+      const params = {}
+
+      if (this.filters.search) params.search = this.filters.search
+      if (this.filters.status) params.status = this.filters.status
+      if (this.filters.customer) params.customer = this.filters.customer
+      if (this.filters.dateFrom) params.after = this.filters.dateFrom
+      if (this.filters.dateTo) params.before = this.filters.dateTo
+      if (this.filters.minAmount !== null) params.min_amount = this.filters.minAmount
+      if (this.filters.maxAmount !== null) params.max_amount = this.filters.maxAmount
+
+      return params
+    },
+
+    clearFilters() {
+      this.filters = {
+        status: '',
+        search: '',
+        customer: '',
+        accountManager: '',
+        dateFrom: '',
+        dateTo: '',
+        minAmount: null,
+        maxAmount: null,
+      }
+    },
+
+    clearError() {
+      this.error = null
+    },
+  },
 })

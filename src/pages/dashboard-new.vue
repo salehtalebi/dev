@@ -400,12 +400,12 @@ const getOrderStatusColor = (status) => {
 }
 
 const getOrderStatusText = (status) => {
-  const texts = {
-    'pending': 'در انتظار',
-    'processing': 'در حال پردازش',
-    'completed': 'تکمیل شده',
-    'cancelled': 'لغو شده'
-  }
+const texts = {
+    'pending': 'Pending',
+    'processing': 'Processing',
+    'completed': 'Completed',
+    'cancelled': 'Cancelled'
+}
   return texts[status] || status
 }
 

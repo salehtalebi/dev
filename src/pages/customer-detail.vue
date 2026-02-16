@@ -249,19 +249,27 @@ const router = useRouter()
 const customersStore = useCustomersStore()
 
 // Local state
-const customerId = route.params.id
+const customerId = parseInt(route.params.id)
 
 // Computed
-const customer = computed(() => customersStore.currentCustomer)
-const customerOrders = computed(() => customersStore.customerOrders)
+const customer = {};//computed(() => customersStore.currentCustomer)
+const customerOrders =[];// computed(() => customersStore.customerOrders)
 const customerStats = computed(() => customersStore.customerStats)
 const isLoading = computed(() => customersStore.isLoading)
 
+console.log("customer" , customer);
+
+
 // Methods
 const fetchCustomer = async () => {
-  try {
-    await customersStore.fetchCustomer(customerId)
-    await customersStore.fetchCustomerOrders(customerId)
+  
+   try {
+    const [cust, orders] = await Promise.all([
+      customersStore.fetchCustomer(customerId),
+      customersStore.fetchCustomerOrders(customerId),
+    ])
+    customer = cust        // ← ذخیره پاسخ در متغیر محلی
+    customerOrders = orders
   } catch (error) {
     console.error('Error fetching customer:', error)
     router.push('/customers')
@@ -300,15 +308,15 @@ const getStatusColor = (status) => {
 }
 
 const getStatusText = (status) => {
-  const statusTexts = {
-    'pending': 'در انتظار پرداخت',
-    'processing': 'در حال پردازش',
-    'on-hold': 'در انتظار',
-    'completed': 'تکمیل شده',
-    'cancelled': 'لغو شده',
-    'refunded': 'بازگشت داده شده',
-    'failed': 'ناموفق'
-  }
+const statusTexts = {
+    'pending': 'Pending payment',
+    'processing': 'Processing',
+    'on-hold': 'On hold',
+    'completed': 'Completed',
+    'cancelled': 'Cancelled',
+    'refunded': 'Refunded',
+    'failed': 'Failed'
+}
   return statusTexts[status] || status
 }
 

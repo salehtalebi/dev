@@ -1,10 +1,45 @@
 <script setup>
-import NavItems from '@/layouts/components/NavItems.vue'
-import logo from '@images/logo.svg?raw'
-import VerticalNavLayout from '@layouts/components/VerticalNavLayout.vue'
-import Footer from '@/layouts/components/Footer.vue'
-import NavbarThemeSwitcher from '@/layouts/components/NavbarThemeSwitcher.vue'
-import UserProfile from '@/layouts/components/UserProfile.vue'
+import NavItems from "@/layouts/components/NavItems.vue";
+import logo from "@images/logo.svg?raw";
+import VerticalNavLayout from "@layouts/components/VerticalNavLayout.vue";
+import Footer from "@/layouts/components/Footer.vue";
+import NavbarThemeSwitcher from "@/layouts/components/NavbarThemeSwitcher.vue";
+import UserProfile from "@/layouts/components/UserProfile.vue";
+import { useRoute } from "vue-router";
+import { ref, watch , onMounted } from 'vue'
+
+
+const route = useRoute()
+const pageTitle = ref("")
+
+const checkRoute = (p) => {
+  const s = p.toLowerCase()
+
+  switch (true) {
+    case s.includes('dashboard'):
+      pageTitle.value = 'Dashboard'
+      break
+    case s.includes('orders'):
+      pageTitle.value = 'Orders Reports'
+      break
+    case s.includes('customers'):
+      pageTitle.value = 'User Reports'
+      break
+    default:
+      pageTitle.value = ''
+  }
+}
+
+watch(
+  () => route.fullPath,
+  (n) => {
+    checkRoute(n)
+  },
+)
+onMounted(() => {
+   checkRoute(route.fullPath)
+})
+
 </script>
 
 <template>
@@ -20,21 +55,7 @@ import UserProfile from '@/layouts/components/UserProfile.vue'
           <VIcon icon="bx-menu" />
         </IconBtn>
 
-        <!-- 👉 Search -->
-        <div
-          class="d-flex align-center cursor-pointer ms-lg-n3"
-          style="user-select: none;"
-        >
-          <!-- 👉 Search Trigger button -->
-          <IconBtn>
-            <VIcon icon="bx-search" />
-          </IconBtn>
-
-          <span class="d-none d-md-flex align-center text-disabled ms-2">
-            <span class="me-2">Search</span>
-            <span class="meta-key">&#8984;K</span>
-          </span>
-        </div>
+        <h2 class="nu-page-title">{{ pageTitle }}</h2>
 
         <VSpacer />
 
@@ -57,15 +78,9 @@ import UserProfile from '@/layouts/components/UserProfile.vue'
     </template>
 
     <template #vertical-nav-header="{ toggleIsOverlayNavActive }">
-      <RouterLink
-        to="/"
-        class="app-logo app-title-wrapper"
-      >
+      <RouterLink to="/" class="app-logo app-title-wrapper">
         <!-- eslint-disable vue/no-v-html -->
-        <div
-          class="d-flex"
-          v-html="logo"
-        />
+        <div class="d-flex" v-html="logo" />
         <!-- eslint-enable -->
       </RouterLink>
 
@@ -111,6 +126,10 @@ import UserProfile from '@/layouts/components/UserProfile.vue'
     font-weight: 500;
     line-height: 1.75rem;
     text-transform: uppercase;
+  }
+
+  .nu-page-title{
+    
   }
 }
 </style>

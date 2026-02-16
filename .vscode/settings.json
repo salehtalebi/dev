@@ -3,7 +3,7 @@
   "files.insertFinalNewline": true,
   "javascript.updateImportsOnFileMove.enabled": "always",
   "[javascript]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+    "editor.defaultFormatter": "vscode.typescript-language-features"
   },
   "[typescript]": {
     "editor.defaultFormatter": "dbaeumer.vscode-eslint",
@@ -14,7 +14,7 @@
   },
   // SCSS
   "[scss]": {
-    "editor.defaultFormatter": "stylelint.vscode-stylelint"
+    "editor.defaultFormatter": "vscode.css-language-features"
   },
   // JSON
   "[json]": {
@@ -25,7 +25,7 @@
   },
   // Vue
   "[vue]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint",
+    "editor.defaultFormatter": "octref.vetur",
   },
   // Extension: Volar
   "volar.preview.port": 3000,
